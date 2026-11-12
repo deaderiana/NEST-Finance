@@ -194,9 +194,11 @@ export interface ApprovalPolicy {
 export interface NotificationItem {
   id: string;
   household_id: string;
+  user_id?: string;
   title: string;
   message: string;
-  type: 'APPROVAL_REQUEST' | 'APPROVAL_DECISION' | 'BUDGET_WARNING' | 'BILL_REMINDER' | 'TRANSACTION';
+  related_entity_id?: string;
+  type: 'APPROVAL_REQUEST' | 'APPROVAL_DECISION' | 'BUDGET_WARNING' | 'BILL_REMINDER' | 'TRANSACTION' | 'SYSTEM';
   created_at: string;
   read: boolean;
   action_link?: string;

@@ -78,7 +78,11 @@ interface FinanceContextType {
   // Real Data & Registration Actions
   registerHousehold: (payload: RegisterHouseholdPayload) => { success: boolean; message: string };
   addNewAccount: (account: InitialAccountInput) => { success: boolean; message: string };
-  createInvitation: (email: string) => { success: boolean; message: string; token?: string; inviteLink?: string };
+  createInvitation: (email: string) => { success: boolean; message: string; token?: string; inviteLink?: string; shareText?: string };
+
+  // Partner Welcome Toast / Notice
+  welcomeNotice: { householdName: string; partnerName: string } | null;
+  dismissWelcomeNotice: () => void;
 
   // Computed metrics
   totalLiquidBalance: number;
@@ -113,8 +117,104 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [approvalPolicy, setApprovalPolicy] = useState<ApprovalPolicy>(INITIAL_APPROVAL_POLICY);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load from local storage
+  const [welcomeNotice, setWelcomeNotice] = useState<{
+    householdName: string;
+    partnerName: string;
+  } | null>(null);
+
+  const dismissWelcomeNotice = () => {
+    setWelcomeNotice(null);
+  };
+
+  // Load from invitation link (if present) OR local storage
   useEffect(() => {
+    // 1. Check if the user opened an invitation URL with sync package
+    if (typeof window !== 'undefined') {
+      try {
+        const search = window.location.search;
+        if (search) {
+          const params = new URLSearchParams(search);
+          const joinParam = params.get('join') || params.get('data');
+          if (joinParam) {
+            const raw = decodeURIComponent(joinParam);
+            const jsonStr = decodeURIComponent(atob(raw));
+            const pkg = JSON.parse(jsonStr);
+
+            if (pkg && pkg.household && pkg.users && pkg.users.length > 0) {
+              const partnerUser =
+                pkg.users.find((u: UserProfile) => u.role === 'PARTNER') ||
+                pkg.users[1] ||
+                pkg.users[0];
+
+              const updatedMembers = (pkg.members || []).map((m: HouseholdMember) =>
+                m.role === 'PARTNER' ? { ...m, status: 'ACTIVE' as const } : m
+              );
+
+              setHousehold(pkg.household);
+              setUsers(pkg.users);
+              setMembers(updatedMembers);
+              if (pkg.accounts) setAccounts(pkg.accounts);
+              if (pkg.categories) setCategories(pkg.categories);
+              if (pkg.transactions) setTransactions(pkg.transactions);
+              if (pkg.journals) setJournals(pkg.journals);
+              if (pkg.budgets) setBudgets(pkg.budgets);
+              if (pkg.goals) setGoals(pkg.goals);
+              if (pkg.debts) setDebts(pkg.debts);
+              if (pkg.bills) setBills(pkg.bills);
+              if (pkg.approvalPolicy) setApprovalPolicy(pkg.approvalPolicy);
+
+              // Crucial: Login the recipient as Partner (Istri)
+              setCurrentUserState(partnerUser);
+
+              const welcomeNotif: NotificationItem = {
+                id: `notif-welcome-${Date.now()}`,
+                household_id: pkg.household.id,
+                type: 'SYSTEM',
+                title: '🎉 Undangan Pasangan Diterima!',
+                message: `Selamat datang, ${partnerUser.display_name}! Anda telah terhubung ke pembukuan ${pkg.household.name}. Seluruh data rekening dan pengeluaran bersama kini aktif.`,
+                created_at: new Date().toISOString(),
+                read: false,
+              };
+              setNotifications((prev) => [welcomeNotif, ...prev]);
+
+              setWelcomeNotice({
+                householdName: pkg.household.name,
+                partnerName: partnerUser.display_name,
+              });
+
+              // Save directly into the recipient device's localStorage
+              const stateToSave = {
+                users: pkg.users,
+                household: pkg.household,
+                members: updatedMembers,
+                invitations: pkg.invitations || [],
+                accounts: pkg.accounts || [],
+                categories: pkg.categories || INITIAL_CATEGORIES,
+                transactions: pkg.transactions || [],
+                journals: pkg.journals || [],
+                budgets: pkg.budgets || INITIAL_BUDGETS,
+                goals: pkg.goals || INITIAL_SAVINGS_GOALS,
+                debts: pkg.debts || INITIAL_DEBTS,
+                bills: pkg.bills || INITIAL_BILLS,
+                notifications: [welcomeNotif],
+                approvalPolicy: pkg.approvalPolicy || INITIAL_APPROVAL_POLICY,
+                currentUserId: partnerUser.id,
+              };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+
+              // Clean address bar so the query string is removed cleanly
+              window.history.replaceState({}, document.title, window.location.pathname);
+              setIsLoaded(true);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse invitation link query param:', err);
+      }
+    }
+
+    // 2. Otherwise load existing localStorage state
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -201,17 +301,39 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   /**
-   * Register New Real Household and Couple Accounts
+   * Reset All Data to default demo state
+   */
+  const resetAllData = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setUsers(USERS);
+    setCurrentUserState(USERS[0]);
+    setHousehold(INITIAL_HOUSEHOLD);
+    setMembers(INITIAL_MEMBERS);
+    setInvitations([]);
+    setAccounts(INITIAL_ACCOUNTS);
+    setCategories(INITIAL_CATEGORIES);
+    setTransactions(INITIAL_TRANSACTIONS);
+    setJournals(INITIAL_LEDGER_JOURNALS);
+    setBudgets(INITIAL_BUDGETS);
+    setGoals(INITIAL_SAVINGS_GOALS);
+    setDebts(INITIAL_DEBTS);
+    setBills(INITIAL_BILLS);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    setApprovalPolicy(INITIAL_APPROVAL_POLICY);
+  };
+
+  /**
+   * Register Real Household & Accounts (PRD Section 5.1 & 7.1)
    */
   const registerHousehold = (payload: RegisterHouseholdPayload): { success: boolean; message: string } => {
     const householdId = `hh-real-${Date.now()}`;
-    const primaryUserId = `user-${Date.now()}-1`;
-    const partnerUserId = `user-${Date.now()}-2`;
+    const primaryUserId = `usr-real-${Date.now()}-1`;
+    const partnerUserId = `usr-real-${Date.now()}-2`;
 
     const newPrimaryUser: UserProfile = {
       id: primaryUserId,
       display_name: payload.primaryUser.name.trim(),
-      email: payload.primaryUser.email.trim(),
+      email: payload.primaryUser.email?.trim() || `${payload.primaryUser.name.toLowerCase().replace(/\s+/g, '')}@nest.local`,
       role: 'OWNER',
       relationship: payload.primaryUser.relationship,
       locale: 'id-ID',
@@ -308,8 +430,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             {
               id: `ent-open-${acc.id}-c`,
               journal_id: jId,
-              account_id: 'equity-opening-balance',
-              account_name: 'Ekuitas Saldo Awal',
+              account_id: 'chart-equity-opening',
+              account_name: 'Modal Awal Keluarga',
               side: 'CREDIT',
               amount: acc.opening_balance,
               created_at: new Date().toISOString(),
@@ -318,149 +440,115 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
       });
 
-    // Apply states
+    // Initial Registration Notification
+    const registrationNotif: NotificationItem = {
+      id: `notif-reg-${Date.now()}`,
+      household_id: householdId,
+      type: 'SYSTEM',
+      title: 'Pendaftaran Rumah Tangga Berhasil',
+      message: `Selamat datang di NEST Finance! Akun ${newHousehold.name} telah aktif dengan ${newAccounts.length} rekening terdaftar.`,
+      created_at: new Date().toISOString(),
+      read: false,
+    };
+
+    // Apply state
     setUsers([newPrimaryUser, newPartnerUser]);
     setCurrentUserState(newPrimaryUser);
     setHousehold(newHousehold);
     setMembers(newMembers);
-    setAccounts(newAccounts.length > 0 ? newAccounts : INITIAL_ACCOUNTS);
+    setAccounts(newAccounts);
     setJournals(openingJournals);
+    setNotifications([registrationNotif]);
 
     if (payload.wipeDemoData) {
       setTransactions([]);
+      setBudgets([]);
+      setGoals([]);
       setDebts([]);
       setBills([]);
-      setGoals([]);
-      setBudgets([]);
-      setNotifications([
-        {
-          id: `notif-${Date.now()}`,
-          household_id: householdId,
-          title: 'Selamat Datang di NEST Finance!',
-          message: `Keluarga "${newHousehold.name}" berhasil didaftarkan dengan data riil bersih. Rekening awal telah diposting ke buku besar.`,
-          type: 'TRANSACTION',
-          created_at: new Date().toISOString(),
-          read: false,
-        },
-      ]);
-    } else {
-      // Keep demo budgets and categories tied to new household
-      setNotifications((prev) => [
-        {
-          id: `notif-${Date.now()}`,
-          household_id: householdId,
-          title: 'Pendaftaran Keluarga Berhasil',
-          message: `Data riil untuk "${newHousehold.name}" telah aktif.`,
-          type: 'TRANSACTION',
-          created_at: new Date().toISOString(),
-          read: false,
-        },
-        ...prev,
-      ]);
+      setInvitations([]);
     }
-
-    // Save immediately to localStorage
-    const savedState = {
-      users: [newPrimaryUser, newPartnerUser],
-      household: newHousehold,
-      members: newMembers,
-      invitations: [],
-      accounts: newAccounts.length > 0 ? newAccounts : INITIAL_ACCOUNTS,
-      categories: INITIAL_CATEGORIES,
-      transactions: payload.wipeDemoData ? [] : transactions,
-      journals: openingJournals,
-      budgets: payload.wipeDemoData ? [] : budgets,
-      goals: payload.wipeDemoData ? [] : goals,
-      debts: payload.wipeDemoData ? [] : debts,
-      bills: payload.wipeDemoData ? [] : bills,
-      notifications: [
-        {
-          id: `notif-${Date.now()}`,
-          household_id: householdId,
-          title: 'Selamat Datang di NEST Finance!',
-          message: `Keluarga "${newHousehold.name}" berhasil didaftarkan.`,
-          type: 'TRANSACTION',
-          created_at: new Date().toISOString(),
-          read: false,
-        },
-      ],
-      approvalPolicy: INITIAL_APPROVAL_POLICY,
-      currentUserId: primaryUserId,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedState));
 
     return {
       success: true,
-      message: `Pendaftaran berhasil! Rumah tangga "${newHousehold.name}" telah aktif dengan pengguna ${newPrimaryUser.display_name}.`,
+      message: `Rumah tangga "${newHousehold.name}" berhasil didaftarkan dengan ${newAccounts.length} rekening!`,
     };
   };
 
   /**
-   * Add New Account with Real Opening Balance
+   * Add a single real account to active household
    */
-  const addNewAccount = (accInput: InitialAccountInput): { success: boolean; message: string } => {
-    if (!accInput.name.trim()) return { success: false, message: 'Nama rekening wajib diisi' };
+  const addNewAccount = (account: InitialAccountInput): { success: boolean; message: string } => {
+    if (!account.name.trim()) {
+      return { success: false, message: 'Nama rekening wajib diisi' };
+    }
 
     const newAccId = `acc-${Date.now()}`;
-    const openBal = Number(accInput.opening_balance) || 0;
-
     const newAcc: Account = {
       id: newAccId,
       household_id: household.id,
-      name: accInput.name.trim(),
-      account_type: accInput.account_type,
-      scope: accInput.scope,
-      owner_user_id: accInput.scope === 'PERSONAL' ? currentUser.id : null,
-      opening_balance: openBal,
-      current_balance: openBal,
+      name: account.name.trim(),
+      account_type: account.account_type,
+      scope: account.scope,
+      owner_user_id: account.scope === 'PERSONAL' ? currentUser.id : null,
+      opening_balance: account.opening_balance || 0,
+      current_balance: account.opening_balance || 0,
       currency: 'IDR',
       is_active: true,
-      account_number: accInput.account_number?.trim() || undefined,
-      icon: accInput.account_type === 'CASH' ? 'Banknote' : accInput.account_type === 'E_WALLET' ? 'Smartphone' : 'Landmark',
+      account_number: account.account_number?.trim() || undefined,
+      icon: account.account_type === 'CASH' ? 'Banknote' : account.account_type === 'E_WALLET' ? 'Smartphone' : 'Landmark',
     };
 
-    if (openBal > 0) {
+    setAccounts((prev) => [...prev, newAcc]);
+
+    // Record Opening balance journal if balance > 0
+    if (newAcc.opening_balance > 0) {
       const jId = `jrn-open-${Date.now()}`;
-      const journal: LedgerJournal = {
+      const newJournal: LedgerJournal = {
         id: jId,
         household_id: household.id,
-        transaction_id: `tx-open-${newAccId}`,
-        journal_number: `JRN-ACC-${Date.now().toString().slice(-4)}`,
+        transaction_id: `tx-open-${newAcc.id}`,
+        journal_number: `JRN-ADD-${Date.now().toString().slice(-4)}`,
         description: `Saldo Awal: ${newAcc.name}`,
         posted_at: new Date().toISOString(),
         is_reversal: false,
         entries: [
           {
-            id: `ent-open-${newAccId}-d`,
+            id: `ent-open-${newAcc.id}-d`,
             journal_id: jId,
-            account_id: newAccId,
+            account_id: newAcc.id,
             account_name: newAcc.name,
             side: 'DEBIT',
-            amount: openBal,
+            amount: newAcc.opening_balance,
             created_at: new Date().toISOString(),
           },
           {
-            id: `ent-open-${newAccId}-c`,
+            id: `ent-open-${newAcc.id}-c`,
             journal_id: jId,
-            account_id: 'equity-opening-balance',
-            account_name: 'Ekuitas Saldo Awal',
+            account_id: 'chart-equity-opening',
+            account_name: 'Modal Awal Tambahan',
             side: 'CREDIT',
-            amount: openBal,
+            amount: newAcc.opening_balance,
             created_at: new Date().toISOString(),
           },
         ],
       };
-      setJournals((prev) => [journal, ...prev]);
+      setJournals((prev) => [newJournal, ...prev]);
     }
 
-    setAccounts((prev) => [...prev, newAcc]);
-    return { success: true, message: `Rekening "${newAcc.name}" berhasil ditambahkan ke daftar rekening riil!` };
+    return {
+      success: true,
+      message: `Rekening "${newAcc.name}" berhasil ditambahkan ke pembukuan!`,
+    };
   };
 
   /**
    * Create Partner Invitation (PRD 6.1: Single-use token hash, expires in 7 days)
+   * With full household state synchronization payload for seamless cross-device onboarding
    */
-  const createInvitation = (email: string): { success: boolean; message: string; token?: string; inviteLink?: string } => {
+  const createInvitation = (
+    email: string
+  ): { success: boolean; message: string; token?: string; inviteLink?: string; shareText?: string } => {
     if (!email || !email.includes('@')) {
       return { success: false, message: 'Alamat email pasangan tidak valid' };
     }
@@ -482,18 +570,54 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setInvitations((prev) => [newInv, ...prev]);
 
     // Update partner member email if invited
-    setMembers((prev) =>
-      prev.map((m) =>
-        m.role === 'PARTNER' ? { ...m, email: email.trim(), status: 'INVITED' } : m
-      )
+    const updatedMembers: HouseholdMember[] = members.map((m) =>
+      m.role === 'PARTNER' ? { ...m, email: email.trim(), status: 'ACTIVE' } : m
     );
+    setMembers(updatedMembers);
 
-    const inviteLink = `${window.location.origin}?invite=${token}`;
+    // Update partner user email as well
+    const updatedUsers: UserProfile[] = users.map((u) =>
+      u.role === 'PARTNER' ? { ...u, email: email.trim() } : u
+    );
+    setUsers(updatedUsers);
+
+    // Build the synchronized package of the real household
+    const syncPackage = {
+      token,
+      household,
+      users: updatedUsers,
+      members: updatedMembers,
+      accounts,
+      categories,
+      approvalPolicy,
+      budgets,
+      goals,
+      debts,
+      bills,
+      transactions,
+      journals,
+      invitedEmail: email.trim(),
+      targetRole: 'PARTNER',
+    };
+
+    let inviteLink = '';
+    let shareText = '';
+    try {
+      const encodedPackage = encodeURIComponent(btoa(encodeURIComponent(JSON.stringify(syncPackage))));
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      inviteLink = `${origin}?invite=${token}&join=${encodedPackage}`;
+      shareText = `Halo sayang, ini tautan undangan untuk bergabung ke pembukuan keuangan bersama kita (${household.name}) di NEST Finance: ${inviteLink}`;
+    } catch (e) {
+      console.error('Failed to encode sync package for invitation:', e);
+      inviteLink = `${window.location.origin}?invite=${token}`;
+    }
+
     return {
       success: true,
-      message: `Undangan berhasil dibuat untuk ${email}. Token berlaku selama 7 hari.`,
+      message: `Undangan berhasil dibuat untuk ${email}. Saat pasangan membuka tautan ini, data bersama langsung aktif otomatis tanpa data demo.`,
       token,
       inviteLink,
+      shareText,
     };
   };
 
@@ -525,163 +649,144 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       account_id: data.account_id,
       destination_account_id: data.destination_account_id || null,
       category_id: data.category_id || null,
-      description: data.description || 'Transaksi baru',
-      merchant: data.merchant || '',
-      note: data.note || '',
+      description: data.description || 'Transaksi Tanpa Keterangan',
+      merchant: data.merchant || undefined,
+      note: data.note || undefined,
       created_by: currentUser.id,
       status: requiresApproval ? 'PENDING_APPROVAL' : 'POSTED',
+      reversal_of_id: null,
       created_at: new Date().toISOString(),
       requires_approval: requiresApproval,
-      tags: data.tags || [],
+      receipt_url: data.receipt_url,
+      tags: data.tags,
     };
 
     if (requiresApproval) {
-      // PRD Rule: Stays pending, does not affect balance, creates partner notification
-      const partner = users.find((u) => u.id !== currentUser.id);
-      const notif: NotificationItem = {
-        id: `notif-${Date.now()}`,
-        household_id: household.id,
-        title: 'Menunggu Persetujuan Transaksi',
-        message: `${currentUser.display_name} membuat transaksi ${newTx.description} sebesar Rp ${amount.toLocaleString('id-ID')} yang melebihi batas Rp ${approvalPolicy.threshold_amount.toLocaleString('id-ID')}.`,
-        type: 'APPROVAL_REQUEST',
-        created_at: new Date().toISOString(),
-        read: false,
-        transaction_id: newTxId,
-      };
-
       setTransactions((prev) => [newTx, ...prev]);
-      setNotifications((prev) => [notif, ...prev]);
 
-      return {
-        success: true,
-        message: `Transaksi melebihi ambang persetujuan (Rp ${approvalPolicy.threshold_amount.toLocaleString('id-ID')}). Status: MENUNGGU PERSETUJUAN PASANGAN. Saldo belum terpotong.`,
-        tx: newTx,
-      };
-    }
-
-    // Direct post: Atomically post double-entry journal and update balances
-    try {
-      const journal = createJournalForTransaction(newTx, accounts, categories);
-
-      // Update account balances
-      const updatedAccounts = accounts.map((acc) => {
-        let balance = acc.current_balance;
-        if (txType === 'EXPENSE' || txType === 'DEBT_PAYMENT') {
-          if (acc.id === newTx.account_id) balance -= amount;
-        } else if (txType === 'INCOME') {
-          if (acc.id === newTx.account_id) balance += amount;
-        } else if (txType === 'TRANSFER') {
-          if (acc.id === newTx.account_id) balance -= amount;
-          if (acc.id === newTx.destination_account_id) balance += amount;
-        }
-        return { ...acc, current_balance: balance };
-      });
-
-      // Update budgets spent
-      if (txType === 'EXPENSE' && newTx.category_id) {
-        setBudgets((prevBudgets) =>
-          prevBudgets.map((b) =>
-            b.category_id === newTx.category_id
-              ? { ...b, spent: b.spent + amount }
-              : b
-          )
-        );
+      // Notify the partner (other user)
+      const otherUser = users.find((u) => u.id !== currentUser.id);
+      if (otherUser) {
+        const notif: NotificationItem = {
+          id: `notif-${Date.now()}`,
+          household_id: household.id,
+          user_id: otherUser.id,
+          type: 'APPROVAL_REQUEST',
+          title: 'Memerlukan Persetujuan Transaksi',
+          message: `${currentUser.display_name} mengajukan ${newTx.description} sebesar Rp ${amount.toLocaleString('id-ID')}. Perlu persetujuan Anda.`,
+          related_entity_id: newTx.id,
+          created_at: new Date().toISOString(),
+          read: false,
+        };
+        setNotifications((prev) => [notif, ...prev]);
       }
 
-      setAccounts(updatedAccounts);
-      setJournals((prev) => [journal, ...prev]);
-      setTransactions((prev) => [newTx, ...prev]);
-
       return {
         success: true,
-        message: 'Transaksi berhasil dicatat dan diposting ke Buku Besar secara otomatis!',
+        message: `Transaksi Rp ${amount.toLocaleString('id-ID')} memerlukan persetujuan pasangan karena melebihi ambang batas.`,
         tx: newTx,
       };
-    } catch (err: any) {
-      return { success: false, message: err.message || 'Gagal memposting transaksi ke buku besar' };
     }
+
+    // Direct posting to double entry ledger
+    const sourceAcc = accounts.find((a) => a.id === data.account_id);
+    const destAcc = data.destination_account_id ? accounts.find((a) => a.id === data.destination_account_id) : undefined;
+    const cat = data.category_id ? categories.find((c) => c.id === data.category_id) : undefined;
+
+    const sourceName = sourceAcc ? sourceAcc.name : 'Rekening';
+    const destName = destAcc ? destAcc.name : undefined;
+    const catName = cat ? cat.name : undefined;
+
+    const journal = createJournalForTransaction(newTx, accounts, categories);
+    const valResult = validateLedgerJournal(journal);
+
+    if (!valResult.isValid) {
+      return { success: false, message: `Gagal memposting buku besar: ${valResult.error}` };
+    }
+
+    // Update balances
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === newTx.account_id) {
+          if (txType === 'EXPENSE' || txType === 'TRANSFER') {
+            return { ...acc, current_balance: acc.current_balance - amount };
+          } else if (txType === 'INCOME') {
+            return { ...acc, current_balance: acc.current_balance + amount };
+          }
+        }
+        if (txType === 'TRANSFER' && acc.id === newTx.destination_account_id) {
+          return { ...acc, current_balance: acc.current_balance + amount };
+        }
+        return acc;
+      })
+    );
+
+    setJournals((prev) => [journal, ...prev]);
+    setTransactions((prev) => [newTx, ...prev]);
+
+    return {
+      success: true,
+      message: 'Transaksi berhasil disimpan dan diposting ke buku besar.',
+      tx: newTx,
+    };
   };
 
   /**
-   * Approve Transaction (Enforces Maker-Checker Invariant!)
+   * Approve Transaction (Maker-Checker enforcement)
    */
   const approveTransaction = (txId: string): { success: boolean; message: string } => {
     const tx = transactions.find((t) => t.id === txId);
     if (!tx) return { success: false, message: 'Transaksi tidak ditemukan' };
 
-    // Maker-checker validation
     const check = validateMakerChecker(tx, currentUser.id);
     if (!check.allowed) {
-      return { success: false, message: check.error || 'Maker-checker violation' };
+      return { success: false, message: check.error || 'Anda tidak diizinkan menyetujui transaksi ini' };
     }
 
-    if (tx.status !== 'PENDING_APPROVAL') {
-      return { success: false, message: `Transaksi berstatus ${tx.status}, tidak dapat disetujui.` };
+    const sourceAcc = accounts.find((a) => a.id === tx.account_id);
+    const destAcc = tx.destination_account_id ? accounts.find((a) => a.id === tx.destination_account_id) : undefined;
+    const cat = tx.category_id ? categories.find((c) => c.id === tx.category_id) : undefined;
+
+    const sourceName = sourceAcc ? sourceAcc.name : 'Rekening';
+    const destName = destAcc ? destAcc.name : undefined;
+    const catName = cat ? cat.name : undefined;
+
+    const approvedTx: Transaction = {
+      ...tx,
+      status: 'POSTED',
+      approved_by: currentUser.id,
+      approved_at: new Date().toISOString(),
+    };
+
+    const journal = createJournalForTransaction(approvedTx, accounts, categories);
+    const valResult = validateLedgerJournal(journal);
+    if (!valResult.isValid) {
+      return { success: false, message: `Buku besar tidak seimbang: ${valResult.error}` };
     }
 
-    try {
-      const journal = createJournalForTransaction(
-        { ...tx, status: 'POSTED' },
-        accounts,
-        categories
-      );
-
-      // Update account balances atomically
-      const updatedAccounts = accounts.map((acc) => {
-        let balance = acc.current_balance;
-        if (tx.transaction_type === 'EXPENSE' || tx.transaction_type === 'DEBT_PAYMENT') {
-          if (acc.id === tx.account_id) balance -= tx.amount;
-        } else if (tx.transaction_type === 'INCOME') {
-          if (acc.id === tx.account_id) balance += tx.amount;
-        } else if (tx.transaction_type === 'TRANSFER') {
-          if (acc.id === tx.account_id) balance -= tx.amount;
-          if (acc.id === tx.destination_account_id) balance += tx.amount;
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === tx.account_id) {
+          if (tx.transaction_type === 'EXPENSE' || tx.transaction_type === 'TRANSFER') {
+            return { ...acc, current_balance: acc.current_balance - tx.amount };
+          } else if (tx.transaction_type === 'INCOME') {
+            return { ...acc, current_balance: acc.current_balance + tx.amount };
+          }
         }
-        return { ...acc, current_balance: balance };
-      });
+        if (tx.transaction_type === 'TRANSFER' && acc.id === tx.destination_account_id) {
+          return { ...acc, current_balance: acc.current_balance + tx.amount };
+        }
+        return acc;
+      })
+    );
 
-      // Update budgets
-      if (tx.transaction_type === 'EXPENSE' && tx.category_id) {
-        setBudgets((prevBudgets) =>
-          prevBudgets.map((b) =>
-            b.category_id === tx.category_id
-              ? { ...b, spent: b.spent + tx.amount }
-              : b
-          )
-        );
-      }
+    setJournals((prev) => [journal, ...prev]);
+    setTransactions((prev) => prev.map((t) => (t.id === txId ? approvedTx : t)));
 
-      const updatedTx: Transaction = {
-        ...tx,
-        status: 'POSTED',
-        approved_by: currentUser.id,
-        approved_at: new Date().toISOString(),
-      };
-
-      setAccounts(updatedAccounts);
-      setJournals((prev) => [journal, ...prev]);
-      setTransactions((prev) => prev.map((t) => (t.id === txId ? updatedTx : t)));
-
-      // Add decision notification
-      const notif: NotificationItem = {
-        id: `notif-${Date.now()}`,
-        household_id: household.id,
-        title: 'Transaksi Disetujui',
-        message: `${currentUser.display_name} menyetujui transaksi ${tx.description} (Rp ${tx.amount.toLocaleString('id-ID')}). Jurnal buku besar telah diposting.`,
-        type: 'APPROVAL_DECISION',
-        created_at: new Date().toISOString(),
-        read: false,
-        transaction_id: txId,
-      };
-      setNotifications((prev) => [notif, ...prev]);
-
-      return {
-        success: true,
-        message: `Transaksi berhasil disetujui oleh ${currentUser.display_name} dan diposting ke Buku Besar!`,
-      };
-    } catch (e: any) {
-      return { success: false, message: e.message || 'Gagal memproses persetujuan' };
-    }
+    return {
+      success: true,
+      message: 'Transaksi berhasil disetujui dan saldo telah diperbarui.',
+    };
   };
 
   /**
@@ -693,156 +798,190 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const check = validateMakerChecker(tx, currentUser.id);
     if (!check.allowed) {
-      return { success: false, message: check.error || 'Maker-checker violation' };
+      return { success: false, message: check.error || 'Anda tidak diizinkan menolak transaksi ini' };
     }
 
-    const updatedTx: Transaction = {
-      ...tx,
-      status: 'REJECTED',
-      note: reason ? `${tx.note ? tx.note + ' | ' : ''}Ditolak oleh ${currentUser.display_name}: ${reason}` : tx.note,
-    };
-
-    setTransactions((prev) => prev.map((t) => (t.id === txId ? updatedTx : t)));
-
-    const notif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      household_id: household.id,
-      title: 'Transaksi Ditolak',
-      message: `${currentUser.display_name} menolak transaksi ${tx.description} (Rp ${tx.amount.toLocaleString('id-ID')}).`,
-      type: 'APPROVAL_DECISION',
-      created_at: new Date().toISOString(),
-      read: false,
-      transaction_id: txId,
-    };
-    setNotifications((prev) => [notif, ...prev]);
-
-    return { success: true, message: 'Transaksi berhasil ditolak dan tidak memengaruhi saldo rekening.' };
-  };
-
-  /**
-   * Reversal Flow for Posted Transactions (PRD 7.3: Invariant - posted journals immutable)
-   */
-  const reverseTransaction = (txId: string): { success: boolean; message: string } => {
-    const tx = transactions.find((t) => t.id === txId);
-    if (!tx) return { success: false, message: 'Transaksi tidak ditemukan' };
-    if (tx.status !== 'POSTED') {
-      return { success: false, message: 'Hanya transaksi berstatus POSTED yang dapat dibalik (reversal).' };
-    }
-
-    // Find original journal
-    const origJournal = journals.find((j) => j.transaction_id === txId);
-    if (!origJournal) {
-      return { success: false, message: 'Jurnal asli tidak ditemukan dalam buku besar' };
-    }
-
-    // Create opposite entries
-    const reversalJournalId = `rev-${Date.now()}`;
-    const reversalEntries = origJournal.entries.map((e, idx) => ({
-      id: `rev-ent-${Date.now()}-${idx}` as string,
-      journal_id: reversalJournalId,
-      account_id: e.account_id,
-      account_name: e.account_name,
-      side: e.side === 'DEBIT' ? ('CREDIT' as const) : ('DEBIT' as const),
-      amount: e.amount,
-      created_at: new Date().toISOString(),
-    }));
-
-    const reversalJournal: LedgerJournal = {
-      id: reversalJournalId,
-      household_id: household.id,
-      transaction_id: txId,
-      journal_number: `REV-${origJournal.journal_number}`,
-      description: `Reversal: ${origJournal.description}`,
-      posted_at: new Date().toISOString(),
-      is_reversal: true,
-      reversal_of_journal_id: origJournal.id,
-      entries: reversalEntries,
-    };
-
-    // Restore account balances
-    const updatedAccounts = accounts.map((acc) => {
-      let balance = acc.current_balance;
-      if (tx.transaction_type === 'EXPENSE' || tx.transaction_type === 'DEBT_PAYMENT') {
-        if (acc.id === tx.account_id) balance += tx.amount; // return money
-      } else if (tx.transaction_type === 'INCOME') {
-        if (acc.id === tx.account_id) balance -= tx.amount;
-      } else if (tx.transaction_type === 'TRANSFER') {
-        if (acc.id === tx.account_id) balance += tx.amount;
-        if (acc.id === tx.destination_account_id) balance -= tx.amount;
-      }
-      return { ...acc, current_balance: balance };
-    });
-
-    setAccounts(updatedAccounts);
-    setJournals((prev) => [reversalJournal, ...prev]);
     setTransactions((prev) =>
-      prev.map((t) => (t.id === txId ? { ...t, status: 'REVERSED' } : t))
+      prev.map((t) =>
+        t.id === txId
+          ? {
+              ...t,
+              status: 'REJECTED',
+              approved_by: currentUser.id,
+              approved_at: new Date().toISOString(),
+              note: reason ? `${t.note || ''} [Ditolak: ${reason}]`.trim() : t.note,
+            }
+          : t
+      )
     );
 
     return {
       success: true,
-      message: 'Transaksi berhasil dibalik (Reversal Journal diposting). Saldo dikembalikan sesuai posisi awal.',
+      message: 'Transaksi telah ditolak.',
     };
   };
 
   /**
-   * Savings Allocation
+   * Reverse Transaction (PRD 8.3: Immutable Ledger Reversal)
    */
-  const addSavingsContribution = (
-    goalId: string,
-    amount: number,
-    accountId: string
-  ): { success: boolean; message: string } => {
-    const goal = goals.find((g) => g.id === goalId);
-    const acc = accounts.find((a) => a.id === accountId);
-    if (!goal || !acc) return { success: false, message: 'Target atau rekening tidak valid' };
-    if (acc.current_balance < amount) return { success: false, message: 'Saldo rekening tidak mencukupi' };
+  const reverseTransaction = (txId: string): { success: boolean; message: string } => {
+    const origTx = transactions.find((t) => t.id === txId);
+    if (!origTx) return { success: false, message: 'Transaksi tidak ditemukan' };
+    if (origTx.status !== 'POSTED') {
+      return { success: false, message: 'Hanya transaksi yang sudah diposting yang dapat dibatalkan/dibalik' };
+    }
 
-    setGoals((prev) =>
-      prev.map((g) =>
-        g.id === goalId ? { ...g, current_amount: g.current_amount + amount } : g
+    const origJournal = journals.find((j) => j.transaction_id === origTx.id && !j.is_reversal);
+    if (!origJournal) {
+      return { success: false, message: 'Jurnal asal tidak ditemukan di buku besar' };
+    }
+
+    const revJournalId = `jrn-rev-${Date.now()}`;
+    const reversalJournal: LedgerJournal = {
+      id: revJournalId,
+      household_id: household.id,
+      transaction_id: `tx-rev-${origTx.id}`,
+      journal_number: `REV-${origJournal.journal_number}`,
+      description: `Pembalikan (Reversal): ${origJournal.description}`,
+      posted_at: new Date().toISOString(),
+      is_reversal: true,
+      reversal_of_journal_id: origJournal.id,
+      entries: origJournal.entries.map((e, idx) => ({
+        id: `ent-rev-${origTx.id}-${idx}`,
+        journal_id: revJournalId,
+        account_id: e.account_id,
+        account_name: e.account_name,
+        side: e.side === 'DEBIT' ? 'CREDIT' : 'DEBIT',
+        amount: e.amount,
+        created_at: new Date().toISOString(),
+      })),
+    };
+
+    const valResult = validateLedgerJournal(reversalJournal);
+    if (!valResult.isValid) {
+      return { success: false, message: `Pembalikan buku besar tidak seimbang: ${valResult.error}` };
+    }
+
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === origTx.account_id) {
+          if (origTx.transaction_type === 'EXPENSE' || origTx.transaction_type === 'TRANSFER') {
+            return { ...acc, current_balance: acc.current_balance + origTx.amount };
+          } else if (origTx.transaction_type === 'INCOME') {
+            return { ...acc, current_balance: acc.current_balance - origTx.amount };
+          }
+        }
+        if (origTx.transaction_type === 'TRANSFER' && acc.id === origTx.destination_account_id) {
+          return { ...acc, current_balance: acc.current_balance - origTx.amount };
+        }
+        return acc;
+      })
+    );
+
+    setJournals((prev) => [reversalJournal, ...prev]);
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.id === txId
+          ? {
+              ...t,
+              status: 'REVERSED',
+              reversal_of_id: origTx.id,
+              note: `${t.note || ''} [Dibalik/Direverse pada ${new Date().toLocaleTimeString('id-ID')}]`.trim(),
+            }
+          : t
       )
     );
 
-    // Record internal transfer
-    createTransaction({
-      transaction_type: 'TRANSFER',
-      amount,
-      account_id: accountId,
-      description: `Alokasi Tabungan: ${goal.name}`,
-      tags: ['Tabungan', 'Target'],
-    });
-
-    return { success: true, message: `Alokasi Rp ${amount.toLocaleString('id-ID')} ke target "${goal.name}" berhasil!` };
+    return {
+      success: true,
+      message: 'Transaksi berhasil dibalik secara akuntansi (jurnal pembalik telah dibuat).',
+    };
   };
 
   /**
-   * Pay Bill
+   * Add contribution to Savings Goal
    */
-  const payBill = (billId: string, accountId: string): { success: boolean; message: string } => {
+  const addSavingsContribution = (goalId: string, amount: number, accountId: string) => {
+    if (amount <= 0) return { success: false, message: 'Nominal tabungan harus > 0' };
+
+    const goal = goals.find((g) => g.id === goalId);
+    if (!goal) return { success: false, message: 'Target tabungan tidak ditemukan' };
+
+    const acc = accounts.find((a) => a.id === accountId);
+    if (!acc || acc.current_balance < amount) {
+      return { success: false, message: 'Saldo rekening sumber tidak mencukupi' };
+    }
+
+    const txRes = createTransaction({
+      transaction_type: 'EXPENSE',
+      amount,
+      account_id: accountId,
+      description: `Setoran Tabungan: ${goal.name}`,
+      note: `Terkait target tabungan ${goal.name}`,
+    });
+
+    if (!txRes.success) return txRes;
+
+    setGoals((prev) =>
+      prev.map((g) => {
+        if (g.id === goalId) {
+          const newCurrent = g.current_amount + amount;
+          return {
+            ...g,
+            current_amount: newCurrent,
+            status: newCurrent >= g.target_amount ? 'COMPLETED' : g.status,
+          };
+        }
+        return g;
+      })
+    );
+
+    return {
+      success: true,
+      message: `Berhasil menabung Rp ${amount.toLocaleString('id-ID')} ke target "${goal.name}".`,
+    };
+  };
+
+  /**
+   * Pay a recurring bill
+   */
+  const payBill = (billId: string, accountId: string) => {
     const bill = bills.find((b) => b.id === billId);
     if (!bill) return { success: false, message: 'Tagihan tidak ditemukan' };
 
-    const res = createTransaction({
+    const txRes = createTransaction({
       transaction_type: 'EXPENSE',
       amount: bill.amount,
       account_id: accountId,
-      category_id: bill.category_id,
+      category_id: bill.category_id || undefined,
       description: `Pembayaran Tagihan: ${bill.title}`,
-      tags: ['Tagihan', 'Rutin'],
     });
 
-    if (res.success) {
-      setBills((prev) =>
-        prev.map((b) => (b.id === billId ? { ...b, is_paid: true } : b))
-      );
-      return { success: true, message: `Tagihan "${bill.title}" berhasil dibayar!` };
-    }
-    return res;
+    if (!txRes.success) return txRes;
+
+    setBills((prev) =>
+      prev.map((b) =>
+        b.id === billId
+          ? {
+              ...b,
+              is_paid_this_period: true,
+              last_paid_at: new Date().toISOString(),
+            }
+          : b
+      )
+    );
+
+    return {
+      success: true,
+      message: `Tagihan "${bill.title}" berhasil dibayar.`,
+    };
   };
 
   const updateApprovalPolicy = (threshold: number) => {
-    setApprovalPolicy((prev) => ({ ...prev, threshold_amount: threshold }));
+    setApprovalPolicy((prev) => ({
+      ...prev,
+      threshold_amount: threshold,
+    }));
   };
 
   const markNotificationRead = (notifId: string) => {
@@ -851,38 +990,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   };
 
-  const resetAllData = () => {
-    setUsers(USERS);
-    setCurrentUserState(USERS[0]);
-    setHousehold(INITIAL_HOUSEHOLD);
-    setMembers(INITIAL_MEMBERS);
-    setInvitations([]);
-    setAccounts(INITIAL_ACCOUNTS);
-    setCategories(INITIAL_CATEGORIES);
-    setTransactions(INITIAL_TRANSACTIONS);
-    setJournals(INITIAL_LEDGER_JOURNALS);
-    setBudgets(INITIAL_BUDGETS);
-    setGoals(INITIAL_SAVINGS_GOALS);
-    setDebts(INITIAL_DEBTS);
-    setBills(INITIAL_BILLS);
-    setNotifications(INITIAL_NOTIFICATIONS);
-    setApprovalPolicy(INITIAL_APPROVAL_POLICY);
-    localStorage.removeItem(STORAGE_KEY);
-  };
-
   // Computed metrics
-  const totalLiquidBalance = accounts.reduce((acc, a) => acc + (a.is_active ? a.current_balance : 0), 0);
+  const totalLiquidBalance = accounts
+    .filter((a) => a.is_active)
+    .reduce((sum, a) => sum + (a.current_balance || 0), 0);
 
-  const postedTxs = transactions.filter((t) => t.status === 'POSTED');
-  const totalIncome = postedTxs
-    .filter((t) => t.transaction_type === 'INCOME')
+  const totalIncome = transactions
+    .filter((t) => t.status === 'POSTED' && t.transaction_type === 'INCOME')
     .reduce((sum, t) => sum + t.amount, 0);
-  const totalExpense = postedTxs
-    .filter((t) => t.transaction_type === 'EXPENSE' || t.transaction_type === 'DEBT_PAYMENT')
+
+  const totalExpense = transactions
+    .filter((t) => t.status === 'POSTED' && t.transaction_type === 'EXPENSE')
     .reduce((sum, t) => sum + t.amount, 0);
+
   const netCashflow = totalIncome - totalExpense;
 
-  const pendingApprovalsCount = transactions.filter((t) => t.status === 'PENDING_APPROVAL').length;
+  const pendingApprovalsCount = transactions.filter(
+    (t) => t.status === 'PENDING_APPROVAL'
+  ).length;
 
   return (
     <FinanceContext.Provider
@@ -919,6 +1044,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         registerHousehold,
         addNewAccount,
         createInvitation,
+        welcomeNotice,
+        dismissWelcomeNotice,
         totalLiquidBalance,
         totalIncome,
         totalExpense,

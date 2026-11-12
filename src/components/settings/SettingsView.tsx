@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFinance } from '@/context/FinanceContext';
 import { formatIDR } from '@/lib/ledgerEngine';
 import { AccountScope, AccountType } from '@/types/finance';
@@ -13,14 +13,17 @@ import {
   Info,
   Landmark,
   Mail,
+  MessageCircle,
   Plus,
   RefreshCw,
   RotateCcw,
   Save,
   Send,
+  Share2,
   Shield,
   Sliders,
   Smartphone,
+  Sparkles,
   UserCheck,
   UserPlus,
   Users,
@@ -49,9 +52,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Partner member lookup
+  const partnerMember = members.find((m) => m.role === 'PARTNER');
+
   // Invite partner state
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteResult, setInviteResult] = useState<{ message: string; link?: string } | null>(null);
+  const [inviteEmail, setInviteEmail] = useState(partnerMember?.email || '');
+  const [inviteResult, setInviteResult] = useState<{
+    message: string;
+    link?: string;
+    shareText?: string;
+  } | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    if (partnerMember?.email && !inviteEmail) {
+      setInviteEmail(partnerMember.email);
+    }
+  }, [partnerMember, inviteEmail]);
 
   // Quick Add Account state
   const [accName, setAccName] = useState('');
@@ -73,14 +90,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
 
   const handleSendInvite = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail.trim()) return;
-    const res = createInvitation(inviteEmail.trim());
+    const emailToUse = inviteEmail.trim() || partnerMember?.email || 'istri@keluarga.id';
+    const res = createInvitation(emailToUse);
     if (res.success) {
-      setInviteResult({ message: res.message, link: res.inviteLink });
-      setInviteEmail('');
+      setInviteResult({
+        message: res.message,
+        link: res.inviteLink,
+        shareText: res.shareText,
+      });
+      setCopiedLink(false);
     } else {
       setInviteResult({ message: res.message });
     }
+  };
+
+  const handleCopyLink = () => {
+    if (!inviteResult?.link) return;
+    navigator.clipboard.writeText(inviteResult.link);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
   };
 
   const handleAddAccountSubmit = (e: React.FormEvent) => {
@@ -197,15 +225,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
         <div className="flex items-center space-x-2 pb-2 border-b border-slate-100">
           <Mail className="w-4 h-4 text-purple-600" />
           <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
-            Undang Pasangan Bergabung (Token Hash PRD 6.1)
+            Undang Pasangan &amp; Sinkronisasi HP (PRD 6.1)
           </h4>
         </div>
 
         <p className="text-xs text-slate-600 leading-relaxed">
-          Kirimkan tautan undangan satu-kali-pakai (*single-use token*) kepada pasangan Anda. Tautan kedaluwarsa otomatis dalam 7 hari.
+          Kirimkan tautan sinkronisasi langsung ke WhatsApp atau email istri/pasangan Anda. Ketika pasangan membuka tautan ini di HP atau komputernya, ia akan <strong>langsung terhubung ke data riil keluarga {household.name}</strong> tanpa kembali ke akun demo.
         </p>
 
-        <form onSubmit={handleSendInvite} className="flex gap-2">
+        <form onSubmit={handleSendInvite} className="flex flex-col sm:flex-row gap-2">
           <input
             type="email"
             placeholder="Masukkan email pasangan..."
@@ -215,33 +243,76 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
           />
           <button
             type="submit"
-            className="clay-button clay-button-primary px-4 py-2 text-xs font-bold shrink-0"
+            className="clay-button clay-button-primary px-4 py-2 text-xs font-bold shrink-0 flex items-center justify-center gap-1.5"
           >
-            Kirim Undangan
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Buat Tautan Undangan Riil</span>
           </button>
         </form>
 
         {inviteResult && (
-          <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs space-y-1">
-            <p className="font-semibold text-purple-900">{inviteResult.message}</p>
+          <div className="p-4 bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border border-purple-200 text-xs space-y-3">
+            <div className="flex items-start space-x-2.5">
+              <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center shrink-0 text-xs font-bold">
+                ✓
+              </div>
+              <div>
+                <p className="font-bold text-purple-950 text-xs sm:text-sm">
+                  Tautan Sinkronisasi Riil Siap Dikirim!
+                </p>
+                <p className="text-[11px] text-purple-800 mt-0.5 leading-relaxed">
+                  Tautan ini telah dipaketkan dengan rekening riil, anggaran, dan data {household.name}. Begitu istri membuka tautan ini di HP-nya, browsernya otomatis masuk sebagai Pasangan (Istri) dan membuka data riil bersama.
+                </p>
+              </div>
+            </div>
+
             {inviteResult.link && (
-              <div className="flex items-center space-x-2 pt-1">
-                <input
-                  type="text"
-                  readOnly
-                  value={inviteResult.link}
-                  className="flex-1 p-1.5 rounded-lg border border-purple-200 text-[10px] font-mono bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(inviteResult.link!);
-                    alert('Tautan undangan berhasil disalin!');
-                  }}
-                  className="px-2 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold"
-                >
-                  Salin
-                </button>
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={inviteResult.link}
+                    className="flex-1 p-2 rounded-xl border border-purple-200 text-[11px] font-mono bg-white text-slate-700 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 ${
+                      copiedLink
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                  >
+                    {copiedLink ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Salin Tautan</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Direct WhatsApp Share button */}
+                <div className="pt-1">
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(
+                      inviteResult.shareText || inviteResult.link
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold shadow-sm transition"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Kirim Langsung via WhatsApp</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                  </a>
+                </div>
               </div>
             )}
           </div>
