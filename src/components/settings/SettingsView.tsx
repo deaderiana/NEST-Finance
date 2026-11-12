@@ -107,7 +107,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
       <div>
         <h3 className="font-bold text-base text-slate-800">Pengaturan Rumah Tangga</h3>
         <p className="text-xs text-slate-500">
-          Konfigurasi data riil keluarga, rekening, undangan pasangan, dan buku besar
+          Konfigurasi data real keluarga, rekening, undangan pasangan, dan buku besar
         </p>
       </div>
 
