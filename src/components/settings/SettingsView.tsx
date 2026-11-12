@@ -11,7 +11,9 @@ import {
   Database,
   ExternalLink,
   Info,
+  KeyRound,
   Landmark,
+  Lock,
   Mail,
   MessageCircle,
   Plus,
@@ -44,6 +46,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
     addNewAccount,
     createInvitation,
     invitations,
+    isPasswordSet,
+    setAppPassword,
+    removeAppPassword,
+    lockApp,
   } = useFinance();
 
   const [thresholdInput, setThresholdInput] = useState(
@@ -69,6 +75,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
       setInviteEmail(partnerMember.email);
     }
   }, [partnerMember, inviteEmail]);
+
+  // Security & Password state
+  const [newPwdInput, setNewPwdInput] = useState('');
+  const [oldPwdInput, setOldPwdInput] = useState('');
+  const [pwdNotice, setPwdNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isChangingPwd, setIsChangingPwd] = useState(false);
+
+  const handleSavePassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPwdInput.trim()) return;
+    const res = setAppPassword(newPwdInput.trim());
+    if (res.success) {
+      setPwdNotice({ type: 'success', text: res.message });
+      setNewPwdInput('');
+      setOldPwdInput('');
+      setIsChangingPwd(false);
+    } else {
+      setPwdNotice({ type: 'error', text: res.message });
+    }
+    setTimeout(() => setPwdNotice(null), 4000);
+  };
+
+  const handleRemovePassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = removeAppPassword(oldPwdInput.trim());
+    if (res.success) {
+      setPwdNotice({ type: 'success', text: res.message });
+      setNewPwdInput('');
+      setOldPwdInput('');
+      setIsChangingPwd(false);
+    } else {
+      setPwdNotice({ type: 'error', text: res.message });
+    }
+    setTimeout(() => setPwdNotice(null), 4000);
+  };
 
   // Quick Add Account state
   const [accName, setAccName] = useState('');
@@ -135,7 +176,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
       <div>
         <h3 className="font-bold text-base text-slate-800">Pengaturan Rumah Tangga</h3>
         <p className="text-xs text-slate-500">
-          Konfigurasi data real keluarga, rekening, undangan pasangan, dan buku besar
+          Konfigurasi data real keluarga, rekening, keamanan password, undangan pasangan, dan buku besar
         </p>
       </div>
 
@@ -218,6 +259,132 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
             </div>
           ))}
         </div>
+      </div>
+
+      {/* KEAMANAN & KUNCI APLIKASI (PASSWORD / PIN) */}
+      <div className="clay-card p-5 bg-white/95 space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div className="flex items-center space-x-2">
+            <Lock className="w-4 h-4 text-amber-500" />
+            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+              Keamanan &amp; Kunci Aplikasi (PIN / Password)
+            </h4>
+          </div>
+          <span
+            className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+              isPasswordSet
+                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                : 'bg-amber-100 text-amber-700 border border-amber-300'
+            }`}
+          >
+            {isPasswordSet ? 'Aktif (Dilindungi Sandi)' : 'Belum Diatur'}
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Amankan catatan keuangan, saldo rekening, dan riwayat transaksi rumah tangga Anda. Saat password aktif, aplikasi akan meminta kunci ini setiap kali dibuka di perangkat.
+        </p>
+
+        {pwdNotice && (
+          <div
+            className={`p-2.5 rounded-xl text-xs font-semibold ${
+              pwdNotice.type === 'success'
+                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                : 'bg-rose-100 text-rose-800 border border-rose-300'
+            }`}
+          >
+            {pwdNotice.text}
+          </div>
+        )}
+
+        {isPasswordSet ? (
+          <div className="space-y-3 pt-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={lockApp}
+                className="clay-button bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center space-x-1.5 shadow-sm"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Kunci Layar Aplikasi Sekarang</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsChangingPwd(!isChangingPwd)}
+                className="clay-button px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold"
+              >
+                {isChangingPwd ? 'Tutup Pengaturan' : 'Ubah / Hapus Password'}
+              </button>
+            </div>
+
+            {isChangingPwd && (
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 animate-in fade-in">
+                <form onSubmit={handleSavePassword} className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600 block">
+                    Ganti dengan Password / PIN Baru:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      required
+                      placeholder="Password baru (min. 4 karakter)..."
+                      value={newPwdInput}
+                      onChange={(e) => setNewPwdInput(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-xl clay-inset text-xs bg-white text-slate-800 font-semibold"
+                    />
+                    <button
+                      type="submit"
+                      className="clay-button clay-button-primary px-4 py-2 text-xs font-bold shrink-0"
+                    >
+                      Simpan Baru
+                    </button>
+                  </div>
+                </form>
+
+                <form onSubmit={handleRemovePassword} className="pt-2 border-t border-slate-200 space-y-2">
+                  <label className="text-[11px] font-bold text-slate-600 block">
+                    Atau Nonaktifkan Password Keamanan:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      required
+                      placeholder="Masukkan password saat ini..."
+                      value={oldPwdInput}
+                      onChange={(e) => setOldPwdInput(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-xl clay-inset text-xs bg-white text-slate-800"
+                    />
+                    <button
+                      type="submit"
+                      className="clay-button clay-button-expense px-4 py-2 text-xs font-bold shrink-0"
+                    >
+                      Hapus Password
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={handleSavePassword} className="flex flex-col sm:flex-row gap-2 pt-1">
+            <input
+              type="password"
+              required
+              placeholder="Atur PIN atau Password (min. 4 karakter)..."
+              value={newPwdInput}
+              onChange={(e) => setNewPwdInput(e.target.value)}
+              className="flex-1 px-3 py-2 rounded-xl clay-inset text-xs bg-white text-slate-800 font-semibold"
+            />
+            <button
+              type="submit"
+              className="clay-button clay-button-primary px-4 py-2 text-xs font-bold shrink-0 flex items-center justify-center gap-1.5"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Aktifkan Password</span>
+            </button>
+          </form>
+        )}
       </div>
 
       {/* Undangan Pasangan (PRD Section 6.1) */}

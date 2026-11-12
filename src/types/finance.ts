@@ -227,4 +227,5 @@ export interface RegisterHouseholdPayload {
   };
   accounts: InitialAccountInput[];
   wipeDemoData: boolean;
+  securityPassword?: string;
 }

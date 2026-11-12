@@ -80,6 +80,15 @@ interface FinanceContextType {
   addNewAccount: (account: InitialAccountInput) => { success: boolean; message: string };
   createInvitation: (email: string) => { success: boolean; message: string; token?: string; inviteLink?: string; shareText?: string };
 
+  // App Password / Security Lock
+  appPassword: string;
+  isPasswordSet: boolean;
+  isLocked: boolean;
+  setAppPassword: (newPassword: string) => { success: boolean; message: string };
+  removeAppPassword: (currentPassword: string) => { success: boolean; message: string };
+  unlockApp: (attempt: string) => { success: boolean; message: string };
+  lockApp: () => void;
+
   // Partner Welcome Toast / Notice
   welcomeNotice: { householdName: string; partnerName: string } | null;
   dismissWelcomeNotice: () => void;
@@ -126,6 +135,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setWelcomeNotice(null);
   };
 
+  // App Security / Password Lock state
+  const [appPassword, setAppPasswordState] = useState<string>('');
+  const [isLocked, setIsLocked] = useState<boolean>(false);
+
   // Load from invitation link (if present) OR local storage
   useEffect(() => {
     // 1. Check if the user opened an invitation URL with sync package
@@ -162,6 +175,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
               if (pkg.debts) setDebts(pkg.debts);
               if (pkg.bills) setBills(pkg.bills);
               if (pkg.approvalPolicy) setApprovalPolicy(pkg.approvalPolicy);
+              if (pkg.appPassword) {
+                setAppPasswordState(pkg.appPassword);
+                setIsLocked(false);
+              }
 
               // Crucial: Login the recipient as Partner (Istri)
               setCurrentUserState(partnerUser);
@@ -199,6 +216,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 notifications: [welcomeNotif],
                 approvalPolicy: pkg.approvalPolicy || INITIAL_APPROVAL_POLICY,
                 currentUserId: partnerUser.id,
+                appPassword: pkg.appPassword || '',
               };
               localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
 
@@ -233,6 +251,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (parsed.bills) setBills(parsed.bills);
         if (parsed.notifications) setNotifications(parsed.notifications);
         if (parsed.approvalPolicy) setApprovalPolicy(parsed.approvalPolicy);
+        if (parsed.appPassword) {
+          setAppPasswordState(parsed.appPassword);
+          setIsLocked(true);
+        }
 
         if (parsed.currentUserId) {
           const list = parsed.users && parsed.users.length > 0 ? parsed.users : USERS;
@@ -267,6 +289,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         notifications,
         approvalPolicy,
         currentUserId: currentUser.id,
+        appPassword,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (e) {
@@ -289,6 +312,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     notifications,
     approvalPolicy,
     currentUser,
+    appPassword,
   ]);
 
   const setCurrentUser = (userId: string) => {
@@ -298,6 +322,57 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const toggleHideBalance = () => {
     setHideBalance((prev) => !prev);
+  };
+
+  const isPasswordSet = Boolean(appPassword && appPassword.length >= 4);
+
+  const setAppPassword = (newPassword: string): { success: boolean; message: string } => {
+    if (!newPassword || newPassword.trim().length < 4) {
+      return { success: false, message: 'Password/PIN minimal terdiri dari 4 digit atau karakter.' };
+    }
+    const clean = newPassword.trim();
+    setAppPasswordState(clean);
+    setIsLocked(false);
+
+    const notif: NotificationItem = {
+      id: `notif-pwd-${Date.now()}`,
+      household_id: household.id,
+      type: 'SYSTEM',
+      title: '🔐 Password Keamanan Aktif',
+      message: 'Password keamanan aplikasi berhasil diaktifkan. Data keuangan keluarga Anda kini terlindungi.',
+      created_at: new Date().toISOString(),
+      read: false,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    return { success: true, message: 'Password keamanan aplikasi berhasil disimpan!' };
+  };
+
+  const removeAppPassword = (currentPassword: string): { success: boolean; message: string } => {
+    if (currentPassword.trim() !== appPassword.trim()) {
+      return { success: false, message: 'Password lama salah. Gagal menonaktifkan keamanan.' };
+    }
+    setAppPasswordState('');
+    setIsLocked(false);
+    return { success: true, message: 'Password keamanan berhasil dinonaktifkan.' };
+  };
+
+  const unlockApp = (attempt: string): { success: boolean; message: string } => {
+    if (!isPasswordSet) {
+      setIsLocked(false);
+      return { success: true, message: 'Aplikasi tidak dilindungi password.' };
+    }
+    if (attempt.trim() === appPassword.trim()) {
+      setIsLocked(false);
+      return { success: true, message: 'Kunci berhasil dibuka.' };
+    }
+    return { success: false, message: 'Password atau PIN salah. Silakan coba lagi.' };
+  };
+
+  const lockApp = () => {
+    if (isPasswordSet) {
+      setIsLocked(true);
+    }
   };
 
   /**
@@ -320,6 +395,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setBills(INITIAL_BILLS);
     setNotifications(INITIAL_NOTIFICATIONS);
     setApprovalPolicy(INITIAL_APPROVAL_POLICY);
+    setAppPasswordState('');
+    setIsLocked(false);
   };
 
   /**
@@ -460,6 +537,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setJournals(openingJournals);
     setNotifications([registrationNotif]);
 
+    if (payload.securityPassword && payload.securityPassword.trim().length >= 4) {
+      setAppPasswordState(payload.securityPassword.trim());
+      setIsLocked(false);
+    }
+
     if (payload.wipeDemoData) {
       setTransactions([]);
       setBudgets([]);
@@ -598,6 +680,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       journals,
       invitedEmail: email.trim(),
       targetRole: 'PARTNER',
+      appPassword,
     };
 
     let inviteLink = '';
@@ -1044,6 +1127,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         registerHousehold,
         addNewAccount,
         createInvitation,
+        appPassword,
+        isPasswordSet,
+        isLocked,
+        setAppPassword,
+        removeAppPassword,
+        unlockApp,
+        lockApp,
         welcomeNotice,
         dismissWelcomeNotice,
         totalLiquidBalance,

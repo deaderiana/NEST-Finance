@@ -8,6 +8,8 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  KeyRound,
+  Lock,
   PlusCircle,
   Shield,
   Sparkles,
@@ -31,6 +33,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
     notifications,
     markNotificationRead,
     setActiveTab,
+    isPasswordSet,
+    lockApp,
   } = useFinance();
 
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -39,39 +43,50 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
-    <header className="sticky top-0 z-40 bg-[#EBF1F6]/90 backdrop-blur-md px-3 sm:px-4 py-2.5 sm:py-3 border-b border-white/60 w-full">
+    <header className="sticky top-0 z-40 bg-[#EBF1F6]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/60 w-full">
       <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
-        {/* App Logo & Household Name */}
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+        {/* App Logo & Household Name - Guaranteed visible and never truncated */}
+        <div className="flex items-center space-x-2.5 sm:space-x-3 shrink-0">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-br from-clay-primary to-indigo-600 flex items-center justify-center text-white shadow-clay-sm shrink-0">
             <Shield className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center space-x-1.5 sm:space-x-2">
-              <h1 className="font-bold text-base sm:text-lg text-slate-800 tracking-tight leading-none truncate">
+          <div className="flex flex-col justify-center">
+            <div className="flex items-center space-x-1.5 whitespace-nowrap">
+              <h1 className="font-extrabold text-base sm:text-lg text-slate-800 tracking-tight leading-none whitespace-nowrap">
                 NEST<span className="text-clay-primary">.Finance</span>
               </h1>
-              <span className="text-[9px] sm:text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-1.5 py-0.5 rounded-full border border-indigo-200 shrink-0">
+              <span className="text-[9px] sm:text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full border border-indigo-200 shrink-0">
                 v1.1
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-500 font-medium truncate max-w-[130px] xs:max-w-[170px] sm:max-w-xs">
+            <p className="text-[10px] sm:text-xs text-slate-500 font-medium truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[220px] leading-tight mt-0.5">
               {household.name}
             </p>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
-          {/* Dedicated Registration Button (Visible on tablet/desktop, mobile access via user menu or Settings) */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+          {/* Dedicated Registration Button (Only on large screens to preserve mobile header space) */}
           <button
             onClick={onOpenRegisterModal}
-            className="hidden md:flex clay-button px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold shadow-clay-sm hover:scale-105 active:scale-95 items-center space-x-1.5 shrink-0"
+            className="hidden lg:flex clay-button px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold shadow-clay-sm hover:scale-105 active:scale-95 items-center space-x-1.5 shrink-0"
             title="Daftar Akun & Rumah Tangga Baru (Data Riil)"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Daftar Data Riil</span>
           </button>
+
+          {/* Quick Lock Button (Visible when password is configured) */}
+          {isPasswordSet && (
+            <button
+              onClick={lockApp}
+              title="Kunci Layar Aplikasi Sekarang"
+              className="w-8 h-8 sm:w-9 sm:h-9 clay-button bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs shrink-0 flex items-center justify-center"
+            >
+              <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+          )}
 
           {/* Privacy Toggle (Hide/Show Saldo) */}
           <button
@@ -151,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
             )}
           </div>
 
-          {/* Active Couple Switcher (Maker-Checker Demonstration) */}
+          {/* Active Couple Switcher & Security Menu */}
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
@@ -232,8 +247,33 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
                     })}
                   </div>
 
-                  {/* Add/Register New Household link */}
-                  <div className="mt-2 pt-2 border-t border-slate-200">
+                  {/* Security / App Lock action inside menu */}
+                  <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
+                    {isPasswordSet ? (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          lockApp();
+                        }}
+                        className="w-full flex items-center space-x-2 p-2 rounded-xl text-xs font-bold text-amber-800 hover:bg-amber-50 transition-colors"
+                      >
+                        <Lock className="w-4 h-4 text-amber-600" />
+                        <span>Kunci Layar Aplikasi Sekarang</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          setActiveTab('settings');
+                        }}
+                        className="w-full flex items-center space-x-2 p-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+                      >
+                        <KeyRound className="w-4 h-4 text-slate-500" />
+                        <span>Atur Password / PIN Aplikasi</span>
+                      </button>
+                    )}
+
+                    {/* Add/Register New Household link */}
                     <button
                       onClick={() => {
                         setShowUserMenu(false);

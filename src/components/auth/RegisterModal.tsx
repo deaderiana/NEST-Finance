@@ -7,8 +7,12 @@ import {
   Banknote,
   Building2,
   CheckCircle2,
+  Eye,
+  EyeOff,
   Heart,
+  KeyRound,
   Landmark,
+  Lock,
   Plus,
   Shield,
   Smartphone,
@@ -38,6 +42,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
   const [partnerEmail, setPartnerEmail] = useState('');
 
   const [wipeDemoData, setWipeDemoData] = useState(true);
+  const [securityPassword, setSecurityPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   // Accounts state
   const [accounts, setAccounts] = useState<InitialAccountInput[]>([
@@ -117,18 +123,19 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
       householdName: householdName.trim(),
       primaryUser: {
         name: primaryName.trim(),
-        email: primaryEmail.trim() || `${primaryName.toLowerCase().replace(/\s+/g, '')}@nest.local`,
+        email: primaryEmail.trim() || `${primaryName.toLowerCase().replace(/\\s+/g, '')}@nest.local`,
         relationship: primaryRelationship,
       },
       partnerUser: partnerName.trim()
         ? {
             name: partnerName.trim(),
-            email: partnerEmail.trim() || `${partnerName.toLowerCase().replace(/\s+/g, '')}@nest.local`,
+            email: partnerEmail.trim() || `${partnerName.toLowerCase().replace(/\\s+/g, '')}@nest.local`,
             relationship: partnerRel,
           }
         : undefined,
       accounts,
       wipeDemoData,
+      securityPassword: securityPassword.trim() || undefined,
     });
 
     if (res.success) {
@@ -180,22 +187,22 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
             <div
               className={`p-3 rounded-2xl text-xs font-semibold flex items-center space-x-2 ${
                 statusMessage.type === 'success'
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-rose-100 text-rose-800 border border-rose-300'
               }`}
             >
-              {statusMessage.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{statusMessage.text}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* SECTION 1: NAMA KELUARGA & PENGGUNA UTAMA */}
+            {/* SECTION 1: PROFIL KELUARGA & ANDA */}
             <div className="clay-card-flat p-4 bg-white/95 space-y-3">
               <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
-                <Shield className="w-4 h-4 text-clay-primary" />
+                <User className="w-4 h-4 text-clay-primary" />
                 <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
-                  1. Data Utama Kepala Keluarga (Owner)
+                  1. Profil Keluarga &amp; Anda (Owner)
                 </h4>
               </div>
 
@@ -206,15 +213,15 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Keluarga Handoko & Maya"
+                  placeholder="Contoh: Keluarga Handoko &amp; Maya"
                   value={householdName}
                   onChange={(e) => setHouseholdName(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                     Nama Lengkap Anda *
                   </label>
@@ -230,12 +237,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
 
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                    Peran Anda
+                    Peran dalam Keluarga
                   </label>
                   <select
                     value={primaryRelationship}
                     onChange={(e) => setPrimaryRelationship(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white"
                   >
                     <option value="Suami">Suami</option>
                     <option value="Istri">Istri</option>
@@ -245,7 +252,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
 
               <div>
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  Email Anda (untuk login &amp; notifikasi)
+                  Email Anda (Untuk Login &amp; Notifikasi)
                 </label>
                 <input
                   type="email"
@@ -257,7 +264,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
               </div>
             </div>
 
-            {/* SECTION 2: DATA PASANGAN (PARTNER) */}
+            {/* SECTION 2: DATA PASANGAN */}
             <div className="clay-card-flat p-4 bg-white/95 space-y-3">
               <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
                 <Heart className="w-4 h-4 text-pink-500" />
@@ -420,7 +427,40 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
               </div>
             </div>
 
-            {/* SECTION 4: OPSI DATA RIIL BERSIH */}
+            {/* SECTION 4: PASSWORD / PIN KEAMANAN (OPSIONAL) */}
+            <div className="clay-card-flat p-4 bg-white/95 space-y-3">
+              <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
+                <Lock className="w-4 h-4 text-amber-500" />
+                <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+                  4. Password / PIN Keamanan Aplikasi (Opsional)
+                </h4>
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Lindungi akses pembukuan keuangan keluarga Anda. Jika diatur, aplikasi akan meminta PIN/Password ini setiap kali dibuka di perangkat.
+              </p>
+
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Masukkan minimal 4 angka atau karakter (misal: 123456)..."
+                  value={securityPassword}
+                  onChange={(e) => setSecurityPassword(e.target.value)}
+                  className="w-full pl-9 pr-10 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white"
+                />
+                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-1.5"
+                  title={showPassword ? 'Sembunyikan' : 'Tampilkan'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* SECTION 5: OPSI DATA RIIL BERSIH */}
             <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 space-y-2">
               <label className="flex items-start space-x-2.5 cursor-pointer">
                 <input

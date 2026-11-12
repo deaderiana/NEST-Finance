@@ -14,12 +14,25 @@ import { BudgetView } from '@/components/budgets/BudgetView';
 import { GoalsView } from '@/components/goals/GoalsView';
 import { ReportsView } from '@/components/reports/ReportsView';
 import { SettingsView } from '@/components/settings/SettingsView';
+import { LockScreen } from '@/components/auth/LockScreen';
 import { CheckCircle2, X } from 'lucide-react';
 
 export default function Home() {
-  const { activeTab, welcomeNotice, dismissWelcomeNotice } = useFinance();
+  const {
+    activeTab,
+    welcomeNotice,
+    dismissWelcomeNotice,
+    isPasswordSet,
+    isLocked,
+  } = useFinance();
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+
+  // If password lock is active and app is locked, render security LockScreen
+  if (isPasswordSet && isLocked) {
+    return <LockScreen />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#EBF1F6] text-slate-800 pb-24 w-full max-w-full overflow-x-hidden">
