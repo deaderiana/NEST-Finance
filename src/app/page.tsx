@@ -21,12 +21,12 @@ export default function Home() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#EBF1F6] text-slate-800 pb-24">
+    <div className="min-h-screen flex flex-col bg-[#EBF1F6] text-slate-800 pb-24 w-full max-w-full overflow-x-hidden">
       {/* Top Header with Registration Action */}
       <Header onOpenRegisterModal={() => setIsRegisterModalOpen(true)} />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-4 sm:py-6">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-4 py-3 sm:py-6 overflow-x-hidden">
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Overview & Liquidity Balance */}

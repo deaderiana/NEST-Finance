@@ -26,7 +26,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className="bg-[#EBF1F6] text-slate-800 min-h-screen select-none">
+      <body className="bg-[#EBF1F6] text-slate-800 min-h-screen select-none overflow-x-hidden w-full max-w-full">
         <FinanceProvider>{children}</FinanceProvider>
       </body>
     </html>
