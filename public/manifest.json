@@ -1,0 +1,16 @@
+{
+  "name": "NEST Finance - Family Finance Management",
+  "short_name": "NEST Finance",
+  "description": "Family Finance Management System with Double-Entry Ledger and Claymorphism UI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EBF1F6",
+  "theme_color": "#4F6EF7",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
