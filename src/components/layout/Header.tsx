@@ -12,6 +12,7 @@ import {
   KeyRound,
   Lock,
   LogOut,
+  RefreshCw,
   PlusCircle,
   QrCode,
   Shield,
@@ -47,6 +48,9 @@ export const Header: React.FC<HeaderProps> = ({
     setActiveTab,
     isPasswordSet,
     lockApp,
+    cloudSyncStatus,
+    lastCloudSyncTime,
+    syncFromCloud,
   } = useFinance();
 
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -79,6 +83,40 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+          {/* Realtime Multi-Device Cloud Sync Button */}
+          <button
+            onClick={() => syncFromCloud(true)}
+            className={`clay-button px-2 sm:px-2.5 py-1.5 text-xs font-bold shrink-0 flex items-center space-x-1 transition-all ${
+              cloudSyncStatus === 'syncing'
+                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                : cloudSyncStatus === 'synced'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : 'bg-[#F4F7FB] text-slate-700 hover:text-indigo-600'
+            }`}
+            title={
+              cloudSyncStatus === 'syncing'
+                ? 'Sedang menyinkronkan data dengan cloud...'
+                : `Cloud Aktif & Tersinkron ${lastCloudSyncTime ? `(${lastCloudSyncTime})` : ''}. Klik untuk tarik data terbaru.`
+            }
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 shrink-0 ${
+                cloudSyncStatus === 'syncing'
+                  ? 'animate-spin text-amber-600'
+                  : cloudSyncStatus === 'synced'
+                  ? 'text-emerald-600'
+                  : 'text-slate-500'
+              }`}
+            />
+            <span className="hidden sm:inline text-[11px]">
+              {cloudSyncStatus === 'syncing'
+                ? 'Sinkron...'
+                : cloudSyncStatus === 'synced'
+                ? 'Cloud Aktif'
+                : 'Sinkron'}
+            </span>
+          </button>
+
           {/* Multi-Device / Phone Sync Button */}
           {onOpenDeviceSync && (
             <button

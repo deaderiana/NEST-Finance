@@ -14,6 +14,7 @@ import {
   Plane,
   Plus,
   Receipt,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   Target,
@@ -34,6 +35,8 @@ export const GoalsView: React.FC = () => {
     addBill,
     payBill,
     hideBalance,
+    syncFromCloud,
+    cloudSyncStatus,
   } = useFinance();
 
   const [activeSection, setActiveSection] = useState<'GOALS' | 'DEBTS' | 'BILLS'>('GOALS');
@@ -232,6 +235,25 @@ export const GoalsView: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Tab Switcher */}
+      {/* Quick Sync Helper if data is waiting to be pulled from laptop */}
+      <div className="flex items-center justify-between px-3 py-2 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs">
+        <div className="flex items-center space-x-2 text-indigo-900 font-medium">
+          <RefreshCw className={`w-3.5 h-3.5 ${cloudSyncStatus === 'syncing' ? 'animate-spin text-amber-600' : 'text-indigo-600'}`} />
+          <span>Tersinkron otomatis dengan Laptop & HP</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            syncFromCloud(true);
+            setStatusMessage('Menyinkronkan data dari cloud/laptop...');
+            setTimeout(() => setStatusMessage(null), 3000);
+          }}
+          className="px-2.5 py-1 bg-white hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 shadow-sm text-[11px] flex items-center space-x-1"
+        >
+          <span>Tarik Data Terbaru</span>
+        </button>
+      </div>
+
       <div className="flex items-center justify-center">
         <div className="flex items-center space-x-1 p-1 bg-[#E8EFF5] rounded-full clay-inset text-xs">
           <button

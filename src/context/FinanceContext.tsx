@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import {
   Account,
   AccountScope,
@@ -98,6 +98,12 @@ interface FinanceContextType {
   lockApp: () => void;
 
   // Partner Welcome Toast / Notice
+  // Realtime Cloud Synchronization
+  cloudSyncStatus: 'idle' | 'syncing' | 'synced' | 'error';
+  lastCloudSyncTime: string | null;
+  syncFromCloud: (force?: boolean) => Promise<{ success: boolean; message: string }>;
+  syncToCloud: (overrideData?: any) => Promise<{ success: boolean; message: string }>;
+
   welcomeNotice: { householdName: string; partnerName: string } | null;
   dismissWelcomeNotice: () => void;
 
@@ -134,6 +140,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [approvalPolicy, setApprovalPolicy] = useState<ApprovalPolicy>(INITIAL_APPROVAL_POLICY);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Cloud Sync state & refs
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
+  const isSyncingRef = useRef(false);
+  const autoSyncDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedHashRef = useRef<string>('');
+  const isApplyingCloudDataRef = useRef(false);
+
 
   const [welcomeNotice, setWelcomeNotice] = useState<{
     householdName: string;
@@ -324,6 +339,218 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     currentUser,
     appPassword,
   ]);
+
+
+  /**
+   * Upload all household finance data to Cloud Storage (GitHub Gist private backend)
+   */
+  const syncToCloud = async (overrideData?: any): Promise<{ success: boolean; message: string }> => {
+    if (typeof window === 'undefined') return { success: false, message: 'Server context' };
+    try {
+      setCloudSyncStatus('syncing');
+      const payload = overrideData || {
+        household,
+        users,
+        members,
+        invitations,
+        accounts,
+        categories,
+        transactions,
+        journals,
+        budgets,
+        goals,
+        debts,
+        bills,
+        notifications,
+        approvalPolicy,
+        appPassword,
+        currentUserId: currentUser?.id,
+        updatedAt: new Date().toISOString(),
+        lastUpdatedBy: currentUser?.display_name || 'User',
+      };
+
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setCloudSyncStatus('synced');
+        setLastCloudSyncTime(new Date().toLocaleTimeString('id-ID'));
+        return { success: true, message: 'Data berhasil disinkronkan ke cloud!' };
+      } else {
+        setCloudSyncStatus('error');
+        return { success: false, message: json.message || 'Gagal sinkronisasi' };
+      }
+    } catch (err: any) {
+      console.error('[CloudSync] Error in syncToCloud:', err);
+      setCloudSyncStatus('error');
+      return { success: false, message: err?.message || 'Gagal terhubung ke cloud' };
+    }
+  };
+
+  /**
+   * Pull latest finance data from Cloud Storage into local state & storage
+   */
+  const syncFromCloud = async (force: boolean = false): Promise<{ success: boolean; message: string }> => {
+    if (typeof window === 'undefined') return { success: false, message: 'Server context' };
+    if (isSyncingRef.current && !force) return { success: false, message: 'Sinkronisasi sedang berlangsung' };
+
+    try {
+      isSyncingRef.current = true;
+      setCloudSyncStatus('syncing');
+
+      const res = await fetch('/api/sync?t=' + Date.now(), {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' },
+      });
+
+      if (!res.ok) {
+        setCloudSyncStatus('error');
+        isSyncingRef.current = false;
+        return { success: false, message: 'Gagal mengambil data dari cloud' };
+      }
+
+      const resJson = await res.json();
+      if (!resJson.success || !resJson.data) {
+        setCloudSyncStatus('idle');
+        isSyncingRef.current = false;
+        return { success: false, message: 'Belum ada data di cloud' };
+      }
+
+      const cloud = resJson.data;
+
+      // Check if local device already has items while cloud is empty
+      const localHasItems =
+        (debts && debts.length > 0) ||
+        (bills && bills.length > 0) ||
+        (goals && goals.length > 0) ||
+        (transactions && transactions.length > 0);
+      const cloudHasItems =
+        (cloud.debts && cloud.debts.length > 0) ||
+        (cloud.bills && cloud.bills.length > 0) ||
+        (cloud.goals && cloud.goals.length > 0) ||
+        (cloud.transactions && cloud.transactions.length > 0);
+
+      if (localHasItems && !cloudHasItems && !force) {
+        console.log('[CloudSync] Local device has newer items than cloud. Pushing local to cloud...');
+        isSyncingRef.current = false;
+        return await syncToCloud();
+      }
+
+      // Apply cloud data to state
+      isApplyingCloudDataRef.current = true;
+
+      if (cloud.household) setHousehold(cloud.household);
+      if (cloud.users && cloud.users.length > 0) setUsers(cloud.users);
+      if (cloud.members) setMembers(cloud.members);
+      if (cloud.invitations) setInvitations(cloud.invitations);
+      if (cloud.accounts) setAccounts(cloud.accounts);
+      if (cloud.categories) setCategories(cloud.categories);
+      if (cloud.transactions) setTransactions(cloud.transactions);
+      if (cloud.journals) setJournals(cloud.journals);
+      if (cloud.budgets) setBudgets(cloud.budgets);
+      if (cloud.goals) setGoals(cloud.goals);
+      if (cloud.debts) setDebts(cloud.debts);
+      if (cloud.bills) setBills(cloud.bills);
+      if (cloud.notifications) setNotifications(cloud.notifications);
+      if (cloud.approvalPolicy) setApprovalPolicy(cloud.approvalPolicy);
+      if (cloud.appPassword !== undefined) {
+        setAppPasswordState(cloud.appPassword);
+        if (cloud.appPassword && cloud.appPassword.length >= 4) {
+          const isSessionUnlocked = sessionStorage.getItem('nest_session_unlocked') === 'true';
+          setIsLocked(!isSessionUnlocked);
+        } else {
+          setIsLocked(false);
+        }
+      }
+
+      // Retain current device logged in user
+      if (currentUser?.id && cloud.users && cloud.users.length > 0) {
+        const matched = cloud.users.find(
+          (u: UserProfile) => u.id === currentUser.id || (u.email && u.email === currentUser.email)
+        );
+        if (matched) {
+          setCurrentUserState(matched);
+        }
+      } else if (cloud.users && cloud.users.length > 0) {
+        setCurrentUserState(cloud.users[0]);
+      }
+
+      // Save to local storage
+      try {
+        const stateToSave = {
+          users: cloud.users || users,
+          household: cloud.household,
+          members: cloud.members || members,
+          invitations: cloud.invitations || invitations,
+          accounts: cloud.accounts || accounts,
+          categories: cloud.categories || categories,
+          transactions: cloud.transactions || transactions,
+          journals: cloud.journals || journals,
+          budgets: cloud.budgets || budgets,
+          goals: cloud.goals || goals,
+          debts: cloud.debts || debts,
+          bills: cloud.bills || bills,
+          notifications: cloud.notifications || notifications,
+          approvalPolicy: cloud.approvalPolicy || approvalPolicy,
+          currentUserId: currentUser?.id || (cloud.users?.[0]?.id),
+          appPassword: cloud.appPassword || '',
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+      } catch (e) {
+        console.error('[CloudSync] Failed to cache cloud data to localStorage:', e);
+      }
+
+      setTimeout(() => {
+        isApplyingCloudDataRef.current = false;
+      }, 800);
+
+      setCloudSyncStatus('synced');
+      setLastCloudSyncTime(new Date().toLocaleTimeString('id-ID'));
+      isSyncingRef.current = false;
+      return { success: true, message: 'Data keluarga berhasil diselaraskan dari cloud!' };
+    } catch (err: any) {
+      console.error('[CloudSync] Error in syncFromCloud:', err);
+      setCloudSyncStatus('error');
+      isSyncingRef.current = false;
+      isApplyingCloudDataRef.current = false;
+      return { success: false, message: err?.message || 'Koneksi cloud gagal' };
+    }
+  };
+
+  // Background & Reactive Cloud Sync: Pull upon initial load, on focus / visibility change, and periodically
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    // Initial pull
+    syncFromCloud();
+
+    // Focus / visibility handler for mobile & desktop tab switching
+    const handleFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncFromCloud();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    // Periodic background polling every 25s
+    const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncFromCloud();
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+      clearInterval(intervalId);
+    };
+  }, [isLoaded]);
 
   const setCurrentUser = (userId: string) => {
     const found = users.find((u) => u.id === userId);
@@ -1792,6 +2019,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         totalExpense,
         netCashflow,
         pendingApprovalsCount,
+        cloudSyncStatus,
+        lastCloudSyncTime,
+        syncFromCloud,
+        syncToCloud,
       }}
     >
       {children}
