@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Home,
   KeyRound,
   Lock,
   PlusCircle,
@@ -20,9 +21,10 @@ import { formatDateID } from '@/lib/ledgerEngine';
 
 interface HeaderProps {
   onOpenRegisterModal: () => void;
+  onGoToLanding?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLanding }) => {
   const {
     currentUser,
     users,
@@ -67,6 +69,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
 
         {/* Action Controls */}
         <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+          {/* Landing Page Link Button */}
+          {onGoToLanding && (
+            <button
+              onClick={onGoToLanding}
+              className="clay-button px-2.5 sm:px-3 py-1.5 bg-[#F4F7FB] text-slate-700 hover:text-indigo-600 text-xs font-bold shrink-0 flex items-center space-x-1"
+              title="Ke Halaman Depan / Landing Page"
+            >
+              <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+              <span className="hidden sm:inline">Landing</span>
+            </button>
+          )}
+
           {/* Dedicated Registration Button (Only on large screens to preserve mobile header space) */}
           <button
             onClick={onOpenRegisterModal}
@@ -270,6 +284,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal }) => {
                       >
                         <KeyRound className="w-4 h-4 text-slate-500" />
                         <span>Atur Password / PIN Aplikasi</span>
+                      </button>
+                    )}
+
+                    {/* Go To Landing Page option */}
+                    {onGoToLanding && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onGoToLanding();
+                        }}
+                        className="w-full flex items-center space-x-2 p-2 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors"
+                      >
+                        <Home className="w-4 h-4 text-indigo-600" />
+                        <span>Halaman Depan (Landing Page)</span>
                       </button>
                     )}
 

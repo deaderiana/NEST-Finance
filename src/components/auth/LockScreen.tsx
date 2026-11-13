@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  Home,
   KeyRound,
   Lock,
   Shield,
@@ -17,9 +18,10 @@ import {
 
 interface LockScreenProps {
   onOpenSignUp?: () => void;
+  onGoToLanding?: () => void;
 }
 
-export const LockScreen: React.FC<LockScreenProps> = ({ onOpenSignUp }) => {
+export const LockScreen: React.FC<LockScreenProps> = ({ onOpenSignUp, onGoToLanding }) => {
   const {
     household,
     currentUser,
@@ -179,9 +181,9 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onOpenSignUp }) => {
           </button>
         </form>
 
-        {/* Action: Sign Up / Register New Real Household */}
-        {onOpenSignUp && (
-          <div className="mt-4 pt-3 border-t border-slate-100">
+        {/* Actions: Sign Up & Back to Landing Page */}
+        <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+          {onOpenSignUp && (
             <button
               type="button"
               onClick={onOpenSignUp}
@@ -190,8 +192,19 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onOpenSignUp }) => {
               <UserPlus className="w-4 h-4 text-emerald-600" />
               <span>Daftar / Buat Akun Baru (Sign Up)</span>
             </button>
-          </div>
-        )}
+          )}
+
+          {onGoToLanding && (
+            <button
+              type="button"
+              onClick={onGoToLanding}
+              className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center space-x-1.5"
+            >
+              <Home className="w-4 h-4 text-indigo-600" />
+              <span>Ke Halaman Depan (Landing Page)</span>
+            </button>
+          )}
+        </div>
 
         {/* Security badge note */}
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-[11px] text-slate-400">

@@ -28,9 +28,10 @@ import confetti from 'canvas-confetti';
 interface RegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose }) => {
+export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { registerHousehold } = useFinance();
 
   // Form states
@@ -162,6 +163,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
 
       setTimeout(() => {
         onClose();
+        if (onSuccess) onSuccess();
       }, 1800);
     } else {
       setStatusMessage({ type: 'error', text: res.message });

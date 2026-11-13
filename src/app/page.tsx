@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFinance } from '@/context/FinanceContext';
 import { Header } from '@/components/layout/Header';
 import { BottomNav } from '@/components/layout/BottomNav';
@@ -15,7 +15,8 @@ import { GoalsView } from '@/components/goals/GoalsView';
 import { ReportsView } from '@/components/reports/ReportsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { LockScreen } from '@/components/auth/LockScreen';
-import { CheckCircle2, KeyRound, Lock, Sparkles, UserPlus, X } from 'lucide-react';
+import { LandingPageView } from '@/components/landing/LandingPageView';
+import { CheckCircle2, X } from 'lucide-react';
 
 export default function Home() {
   const {
@@ -27,30 +28,98 @@ export default function Home() {
     household,
   } = useFinance();
 
+  // Navigation mode: 'landing' (Halaman Depan & Pendaftaran) vs 'dashboard' (Operasional Pembukuan)
+  const [viewMode, setViewMode] = useState<'landing' | 'dashboard'>('landing');
+  const [isClientReady, setIsClientReady] = useState(false);
+
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
-  // If password lock is active and app is locked, render security LockScreen with Sign Up access
-  if (isPasswordSet && isLocked) {
+  // Initialize view mode based on saved preference or household state
+  useEffect(() => {
+    try {
+      const savedView = localStorage.getItem('nest_active_view');
+      if (savedView === 'dashboard' || savedView === 'landing') {
+        setViewMode(savedView);
+      } else {
+        // If household is demo, default to landing page to welcome user
+        // If already custom real household, default to dashboard
+        const rawState = localStorage.getItem('nest_finance_v1_1_state');
+        if (rawState) {
+          const parsed = JSON.parse(rawState);
+          if (parsed?.household?.id && parsed.household.id !== 'hh-pratama-rahma') {
+            setViewMode('dashboard');
+          } else {
+            setViewMode('landing');
+          }
+        } else {
+          setViewMode('landing');
+        }
+      }
+    } catch (e) {
+      setViewMode('landing');
+    }
+    setIsClientReady(true);
+  }, []);
+
+  const handleGoToDashboard = () => {
+    setViewMode('dashboard');
+    try {
+      localStorage.setItem('nest_active_view', 'dashboard');
+    } catch (e) {}
+  };
+
+  const handleGoToLanding = () => {
+    setViewMode('landing');
+    try {
+      localStorage.setItem('nest_active_view', 'landing');
+    } catch (e) {}
+  };
+
+  // 1. LANDING PAGE VIEW (Terpisah Khusus Pendaftaran & Fitur Utama)
+  if (viewMode === 'landing') {
     return (
       <>
-        <LockScreen onOpenSignUp={() => setIsRegisterModalOpen(true)} />
-        {/* Modal SignUp can be opened from LockScreen */}
+        <LandingPageView
+          onGoToDashboard={handleGoToDashboard}
+          onOpenSignUp={() => setIsRegisterModalOpen(true)}
+        />
+
+        {/* Modal Pendaftaran Akun Riil (Sign Up) */}
         <RegisterModal
           isOpen={isRegisterModalOpen}
           onClose={() => setIsRegisterModalOpen(false)}
+          onSuccess={handleGoToDashboard}
         />
       </>
     );
   }
 
-  // Check if current data is default demo data
-  const isDemoAccount = household.id === 'hh-pratama-rahma';
+  // 2. DASHBOARD VIEW - SECURITY LOCK (Jika Password Aktif dan Layar Terkunci)
+  if (isPasswordSet && isLocked) {
+    return (
+      <>
+        <LockScreen
+          onOpenSignUp={() => setIsRegisterModalOpen(true)}
+          onGoToLanding={handleGoToLanding}
+        />
+        <RegisterModal
+          isOpen={isRegisterModalOpen}
+          onClose={() => setIsRegisterModalOpen(false)}
+          onSuccess={handleGoToDashboard}
+        />
+      </>
+    );
+  }
 
+  // 3. DASHBOARD VIEW - MAIN APPLICATION
   return (
     <div className="min-h-screen flex flex-col bg-[#EBF1F6] text-slate-800 pb-24 w-full max-w-full overflow-x-hidden">
-      {/* Top Header with Registration Action */}
-      <Header onOpenRegisterModal={() => setIsRegisterModalOpen(true)} />
+      {/* Top Header with Registration & Landing Link */}
+      <Header
+        onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
+        onGoToLanding={handleGoToLanding}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-4 py-3 sm:py-6 overflow-x-hidden">
@@ -84,47 +153,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* PROMINENT LANDING SIGNUP / SETUP PASSWORD CALL-TO-ACTION (DASHBOARD ONLY) */}
-        {activeTab === 'dashboard' && (
-          <div className="clay-card p-4 sm:p-5 bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-600 text-white shadow-clay-lg relative overflow-hidden mb-4 sm:mb-6 animate-in fade-in">
-            {/* Background glowing orbs */}
-            <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-teal-400/20 rounded-full blur-2xl pointer-events-none" />
-
-            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-1.5">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-sm">
-                  <Sparkles className="w-3 h-3 text-amber-300" />
-                  <span>{isDemoAccount ? 'Mulai Pembukuan Riil' : 'Keamanan & Akun'}</span>
-                </div>
-                <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
-                  {isDemoAccount
-                    ? 'Daftar Akun Keluarga Riil & Atur Password Anda'
-                    : `Pembukuan ${household.name} Aktif`}
-                </h2>
-                <p className="text-xs sm:text-sm text-indigo-100 max-w-xl leading-relaxed">
-                  {isDemoAccount
-                    ? 'Buat akun Anda dan pasangan, daftarkan rekening bank / dompet riil, dan tetapkan password keamanan agar pembukuan tidak terbuka sembarangan.'
-                    : isPasswordSet
-                    ? 'Aplikasi Anda sudah dilindungi Password/PIN keamanan dan aturan Maker-Checker.'
-                    : 'Aplikasi belum memiliki password pembuka. Atur password keamanan sekarang agar catatan keuangan terlindungi.'}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsRegisterModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-white text-indigo-800 hover:bg-indigo-50 font-extrabold text-xs shadow-md transition flex items-center gap-2 hover:scale-105 active:scale-95"
-                >
-                  <UserPlus className="w-4 h-4 text-emerald-600" />
-                  <span>{isDemoAccount ? 'Buat Akun / Sign Up' : 'Daftar Ulang / Ganti Data'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
+        {/* TAB 1: DASHBOARD UTAMA */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* Overview & Liquidity Balance */}
@@ -141,6 +170,7 @@ export default function Home() {
           </div>
         )}
 
+        {/* TAB 2: TRANSAKSI */}
         {activeTab === 'transactions' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <PendingApprovalBanner />
@@ -148,24 +178,28 @@ export default function Home() {
           </div>
         )}
 
+        {/* TAB 3: ANGGARAN (BUDGETS) */}
         {activeTab === 'budgets' && (
           <div className="animate-in fade-in duration-300">
             <BudgetView />
           </div>
         )}
 
+        {/* TAB 4: TABUNGAN & GOALS */}
         {activeTab === 'goals' && (
           <div className="animate-in fade-in duration-300">
             <GoalsView />
           </div>
         )}
 
+        {/* TAB 5: LAPORAN (REPORTS) */}
         {activeTab === 'reports' && (
           <div className="animate-in fade-in duration-300">
             <ReportsView />
           </div>
         )}
 
+        {/* TAB 6: PENGATURAN (SETTINGS) */}
         {activeTab === 'settings' && (
           <div className="animate-in fade-in duration-300">
             <SettingsView onOpenRegisterModal={() => setIsRegisterModalOpen(true)} />
@@ -183,6 +217,7 @@ export default function Home() {
       <RegisterModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
+        onSuccess={handleGoToDashboard}
       />
 
       {/* Bottom Sticky Navigation */}
