@@ -13,7 +13,9 @@ import {
   Lock,
   LogOut,
   PlusCircle,
+  QrCode,
   Shield,
+  Smartphone,
   Sparkles,
   UserPlus,
   Users,
@@ -24,9 +26,15 @@ interface HeaderProps {
   onOpenRegisterModal: () => void;
   onGoToLanding?: () => void;
   onLogout?: () => void;
+  onOpenDeviceSync?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLanding, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({
+  onOpenRegisterModal,
+  onGoToLanding,
+  onLogout,
+  onOpenDeviceSync,
+}) => {
   const {
     currentUser,
     users,
@@ -71,6 +79,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLandi
 
         {/* Action Controls */}
         <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+          {/* Multi-Device / Phone Sync Button */}
+          {onOpenDeviceSync && (
+            <button
+              onClick={onOpenDeviceSync}
+              className="clay-button px-2.5 sm:px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold shrink-0 flex items-center space-x-1 border border-indigo-200/80"
+              title="Hubungkan ke HP / Scan QR Code"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="hidden sm:inline">Hubungkan HP</span>
+            </button>
+          )}
+
           {/* Landing Page Link Button */}
           {onGoToLanding && (
             <button
@@ -275,8 +295,22 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLandi
                     })}
                   </div>
 
-                  {/* Security / App Lock action inside menu */}
+                  {/* Security / App Lock / Multi-Device action inside menu */}
                   <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
+                    {/* Multi-Device Phone Sync */}
+                    {onOpenDeviceSync && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onOpenDeviceSync();
+                        }}
+                        className="w-full flex items-center space-x-2 p-2 rounded-xl text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition-colors"
+                      >
+                        <Smartphone className="w-4 h-4 text-indigo-600" />
+                        <span>Hubungkan ke HP (Scan QR / Sync)</span>
+                      </button>
+                    )}
+
                     {isPasswordSet ? (
                       <button
                         onClick={() => {

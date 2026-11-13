@@ -76,7 +76,10 @@ interface FinanceContextType {
   resetAllData: () => void;
 
   // Real Data & Registration Actions
-  login: (email: string, password?: string) => { success: boolean; message: string; user?: UserProfile };
+  login: (email: string, password?: string) => { success: boolean; message: string; user?: UserProfile; canAutoProvision?: boolean; email?: string };
+  importSyncPackage: (syncDataOrUrl: string) => { success: boolean; message: string };
+  quickProvisionAccount: (email: string, password?: string, displayName?: string) => { success: boolean; message: string; user?: UserProfile };
+  generateSyncUrl: () => string;
   logout: () => void;
   registerHousehold: (payload: RegisterHouseholdPayload) => { success: boolean; message: string };
   addNewAccount: (account: InitialAccountInput) => { success: boolean; message: string };
@@ -158,9 +161,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             if (pkg && pkg.household && pkg.users && pkg.users.length > 0) {
               const partnerUser =
-                pkg.users.find((u: UserProfile) => u.role === 'PARTNER') ||
-                pkg.users[1] ||
-                pkg.users[0];
+                pkg.activeUserRole === 'OWNER'
+                  ? pkg.users.find((u: UserProfile) => u.role === 'OWNER') || pkg.users[0]
+                  : pkg.users.find((u: UserProfile) => u.role === 'PARTNER') || pkg.users[1] || pkg.users[0];
 
               const updatedMembers = (pkg.members || []).map((m: HouseholdMember) =>
                 m.role === 'PARTNER' ? { ...m, status: 'ACTIVE' as const } : m
@@ -471,7 +474,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const login = (
     email: string,
     password?: string
-  ): { success: boolean; message: string; user?: UserProfile } => {
+  ): { success: boolean; message: string; user?: UserProfile; canAutoProvision?: boolean; email?: string } => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = (password || '').trim();
 
@@ -622,10 +625,300 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
     }
 
+    // 4. Built-in Multi-Device Recognition for Byderiana (Instant Access on Phone)
+    if (
+      cleanEmail === 'byderiana@gmail.com' ||
+      cleanEmail === 'byderiana' ||
+      cleanEmail === 'dea.deriana@gmail.com'
+    ) {
+      return quickProvisionAccount(cleanEmail, cleanPassword, 'Byderiana');
+    }
+
     return {
       success: false,
-      message: 'Akun dengan email tersebut belum terdaftar di sistem. Silakan mendaftar (Sign Up) terlebih dahulu.',
+      message: 'Akun ' + cleanEmail + ' belum tersimpan di HP ini.',
+      canAutoProvision: true,
+      email: cleanEmail,
     };
+  };
+
+  /**
+   * Quick Provision Account for Instant Multi-Device Onboarding
+   */
+  const quickProvisionAccount = (
+    email: string,
+    password?: string,
+    displayName?: string
+  ): { success: boolean; message: string; user?: UserProfile } => {
+    const cleanEmail = email.trim().toLowerCase();
+    const name = displayName?.trim() || cleanEmail.split('@')[0];
+    const capitalizedName = name.charAt(0).toUpperCase() + name.slice(1);
+
+    const householdId = 'hh-' + name.toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + Date.now().toString().slice(-4);
+    const primaryUserId = 'usr-' + Date.now() + '-owner';
+    const partnerUserId = 'usr-' + Date.now() + '-partner';
+
+    const newPrimaryUser: UserProfile = {
+      id: primaryUserId,
+      display_name: capitalizedName,
+      email: cleanEmail,
+      role: 'OWNER',
+      relationship: 'Suami',
+      locale: 'id-ID',
+    };
+
+    const newPartnerUser: UserProfile = {
+      id: partnerUserId,
+      display_name: 'Pasangan (Istri)',
+      email: '',
+      role: 'PARTNER',
+      relationship: 'Istri',
+      locale: 'id-ID',
+    };
+
+    const newHousehold: Household = {
+      id: householdId,
+      name: 'Keluarga ' + capitalizedName,
+      owner_user_id: primaryUserId,
+      currency: 'IDR',
+      timezone: 'Asia/Jakarta',
+      budget_start_day: 1,
+      couple_limit: 2,
+    };
+
+    const newMembers: HouseholdMember[] = [
+      {
+        id: 'mem-' + Date.now() + '-1',
+        household_id: householdId,
+        user_id: primaryUserId,
+        role: 'OWNER',
+        status: 'ACTIVE',
+        display_name: newPrimaryUser.display_name,
+        relationship: 'Suami',
+        email: cleanEmail,
+      },
+      {
+        id: 'mem-' + Date.now() + '-2',
+        household_id: householdId,
+        user_id: partnerUserId,
+        role: 'PARTNER',
+        status: 'INVITED',
+        display_name: newPartnerUser.display_name,
+        relationship: 'Istri',
+      },
+    ];
+
+    const initialAccs: Account[] = [
+      {
+        id: 'acc-' + Date.now() + '-1',
+        household_id: householdId,
+        name: 'BCA Bersama (Operasional)',
+        account_type: 'BANK',
+        scope: 'SHARED',
+        owner_user_id: null,
+        opening_balance: 15000000,
+        current_balance: 15000000,
+        currency: 'IDR',
+        is_active: true,
+        account_number: '5271-889-012',
+        icon: 'Landmark',
+      },
+      {
+        id: 'acc-' + Date.now() + '-2',
+        household_id: householdId,
+        name: 'Mandiri Tabungan Bersama',
+        account_type: 'BANK',
+        scope: 'SHARED',
+        owner_user_id: null,
+        opening_balance: 10000000,
+        current_balance: 10000000,
+        currency: 'IDR',
+        is_active: true,
+        account_number: '137-00-1928374',
+        icon: 'Building2',
+      },
+      {
+        id: 'acc-' + Date.now() + '-3',
+        household_id: householdId,
+        name: 'Kas Tunai Dompet Rumah',
+        account_type: 'CASH',
+        scope: 'SHARED',
+        owner_user_id: null,
+        opening_balance: 2000000,
+        current_balance: 2000000,
+        currency: 'IDR',
+        is_active: true,
+        icon: 'Banknote',
+      },
+      {
+        id: 'acc-' + Date.now() + '-4',
+        household_id: householdId,
+        name: 'BCA Pribadi (' + capitalizedName + ')',
+        account_type: 'BANK',
+        scope: 'PERSONAL',
+        owner_user_id: primaryUserId,
+        opening_balance: 5000000,
+        current_balance: 5000000,
+        currency: 'IDR',
+        is_active: true,
+        account_number: '6040-112-998',
+        icon: 'Wallet',
+      },
+    ];
+
+    setUsers([newPrimaryUser, newPartnerUser]);
+    setCurrentUserState(newPrimaryUser);
+    setHousehold(newHousehold);
+    setMembers(newMembers);
+    setAccounts(initialAccs);
+    setCategories(INITIAL_CATEGORIES);
+    setTransactions([]);
+    setJournals([]);
+    setBudgets(INITIAL_BUDGETS);
+    setGoals(INITIAL_SAVINGS_GOALS);
+    setDebts(INITIAL_DEBTS);
+    setBills(INITIAL_BILLS);
+    setInvitations([]);
+
+    const cleanPwd = (password || '').trim();
+    if (cleanPwd && cleanPwd.length >= 4) {
+      setAppPasswordState(cleanPwd);
+      setIsLocked(false);
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nest_active_view', 'dashboard');
+    }
+
+    saveStateToRegistry(
+      newHousehold,
+      [newPrimaryUser, newPartnerUser],
+      newMembers,
+      initialAccs,
+      [],
+      [],
+      cleanPwd
+    );
+
+    return {
+      success: true,
+      message: 'Selamat datang, ' + capitalizedName + '! Pembukuan keluarga ' + newHousehold.name + ' berhasil diaktifkan di perangkat ini.',
+      user: newPrimaryUser,
+    };
+  };
+
+  /**
+   * Generate Multi-Device Synchronization URL
+   */
+  const generateSyncUrl = (): string => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const syncPackage = {
+        household,
+        users,
+        members,
+        accounts,
+        categories,
+        approvalPolicy,
+        budgets,
+        goals,
+        debts,
+        bills,
+        transactions,
+        journals,
+        appPassword,
+        activeUserRole: currentUser.role,
+      };
+      const encodedPackage = encodeURIComponent(btoa(encodeURIComponent(JSON.stringify(syncPackage))));
+      return window.location.origin + '/?join=' + encodedPackage;
+    } catch (e) {
+      console.error('Failed to generate sync URL:', e);
+      return window.location.origin;
+    }
+  };
+
+  /**
+   * Import Synchronized Package from Another Device (QR / Link / Code)
+   */
+  const importSyncPackage = (syncDataOrUrl: string): { success: boolean; message: string } => {
+    if (!syncDataOrUrl || !syncDataOrUrl.trim()) {
+      return { success: false, message: 'Masukkan data atau tautan sinkronisasi.' };
+    }
+
+    try {
+      let rawStr = syncDataOrUrl.trim();
+      if (rawStr.includes('join=') || rawStr.includes('data=')) {
+        const urlObj = new URL(rawStr.startsWith('http') ? rawStr : 'https://dummy.local/' + rawStr);
+        const param = urlObj.searchParams.get('join') || urlObj.searchParams.get('data');
+        if (param) rawStr = param;
+      }
+
+      let pkg = null;
+      try {
+        const decodedParam = decodeURIComponent(rawStr);
+        const jsonStr = decodeURIComponent(atob(decodedParam));
+        pkg = JSON.parse(jsonStr);
+      } catch {
+        try {
+          const jsonStr = atob(rawStr);
+          pkg = JSON.parse(jsonStr);
+        } catch {
+          pkg = JSON.parse(rawStr);
+        }
+      }
+
+      if (!pkg || !pkg.household || !pkg.users) {
+        return { success: false, message: 'Format data sinkronisasi tidak valid atau korup.' };
+      }
+
+      setHousehold(pkg.household);
+      setUsers(pkg.users);
+      if (pkg.members) setMembers(pkg.members);
+      if (pkg.accounts) setAccounts(pkg.accounts);
+      if (pkg.categories) setCategories(pkg.categories);
+      if (pkg.transactions) setTransactions(pkg.transactions);
+      if (pkg.journals) setJournals(pkg.journals);
+      if (pkg.budgets) setBudgets(pkg.budgets);
+      if (pkg.goals) setGoals(pkg.goals);
+      if (pkg.debts) setDebts(pkg.debts);
+      if (pkg.bills) setBills(pkg.bills);
+      if (pkg.approvalPolicy) setApprovalPolicy(pkg.approvalPolicy);
+
+      if (pkg.appPassword) {
+        setAppPasswordState(pkg.appPassword);
+        setIsLocked(false);
+      }
+
+      const activeUser =
+        pkg.activeUserRole === 'OWNER'
+          ? pkg.users.find((u: any) => u.role === 'OWNER') || pkg.users[0]
+          : pkg.users.find((u: any) => u.role === 'PARTNER') || pkg.users[1] || pkg.users[0];
+
+      setCurrentUserState(activeUser);
+      setIsLocked(false);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nest_active_view', 'dashboard');
+      }
+
+      saveStateToRegistry(
+        pkg.household,
+        pkg.users,
+        pkg.members || [],
+        pkg.accounts || [],
+        pkg.transactions || [],
+        pkg.journals || [],
+        pkg.appPassword || ''
+      );
+
+      return {
+        success: true,
+        message: 'Berhasil menyinkronkan data keluarga ' + pkg.household.name + '! Pembukuan siap digunakan di perangkat ini.',
+      };
+    } catch (err: any) {
+      console.error('importSyncPackage failed:', err);
+      return { success: false, message: 'Gagal memproses data sinkronisasi: ' + (err.message || 'Format tidak cocok') };
+    }
   };
 
   /**
@@ -1404,6 +1697,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lockApp,
         welcomeNotice,
         dismissWelcomeNotice,
+        importSyncPackage,
+        quickProvisionAccount,
+        generateSyncUrl,
         totalLiquidBalance,
         totalIncome,
         totalExpense,
