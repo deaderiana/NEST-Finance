@@ -11,6 +11,7 @@ import {
   Home,
   KeyRound,
   Lock,
+  LogOut,
   PlusCircle,
   Shield,
   Sparkles,
@@ -22,9 +23,10 @@ import { formatDateID } from '@/lib/ledgerEngine';
 interface HeaderProps {
   onOpenRegisterModal: () => void;
   onGoToLanding?: () => void;
+  onLogout?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLanding }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLanding, onLogout }) => {
   const {
     currentUser,
     users,
@@ -78,6 +80,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLandi
             >
               <Home className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
               <span className="hidden sm:inline">Landing</span>
+            </button>
+          )}
+
+          {/* Quick Logout Button */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="clay-button px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold shrink-0 flex items-center space-x-1"
+              title="Keluar dari Akun (Logout)"
+            >
+              <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
+              <span className="hidden sm:inline">Keluar</span>
             </button>
           )}
 
@@ -298,6 +312,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenRegisterModal, onGoToLandi
                       >
                         <Home className="w-4 h-4 text-indigo-600" />
                         <span>Halaman Depan (Landing Page)</span>
+                      </button>
+                    )}
+
+                    {/* Logout option */}
+                    {onLogout && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          onLogout();
+                        }}
+                        className="w-full flex items-center space-x-2 p-2 rounded-xl text-xs font-bold text-rose-700 hover:bg-rose-50 transition-colors"
+                      >
+                        <LogOut className="w-4 h-4 text-rose-600" />
+                        <span>Keluar dari Akun (Logout)</span>
                       </button>
                     )}
 

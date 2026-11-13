@@ -10,6 +10,7 @@ import { AccountsSection } from '@/components/dashboard/AccountsSection';
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions';
 import { TransactionModal } from '@/components/transactions/TransactionModal';
 import { RegisterModal } from '@/components/auth/RegisterModal';
+import { LoginModal } from '@/components/auth/LoginModal';
 import { BudgetView } from '@/components/budgets/BudgetView';
 import { GoalsView } from '@/components/goals/GoalsView';
 import { ReportsView } from '@/components/reports/ReportsView';
@@ -26,6 +27,7 @@ export default function Home() {
     isPasswordSet,
     isLocked,
     household,
+    logout,
   } = useFinance();
 
   // Navigation mode: 'landing' (Halaman Depan & Pendaftaran) vs 'dashboard' (Operasional Pembukuan)
@@ -34,6 +36,7 @@ export default function Home() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // Initialize view mode based on saved preference or household state
   useEffect(() => {
@@ -76,13 +79,27 @@ export default function Home() {
     } catch (e) {}
   };
 
-  // 1. LANDING PAGE VIEW (Terpisah Khusus Pendaftaran & Fitur Utama)
+  const handleLogout = () => {
+    logout();
+    handleGoToLanding();
+  };
+
+  // 1. LANDING PAGE VIEW (Terpisah Khusus Pendaftaran, Login & Fitur Utama)
   if (viewMode === 'landing') {
     return (
       <>
         <LandingPageView
           onGoToDashboard={handleGoToDashboard}
           onOpenSignUp={() => setIsRegisterModalOpen(true)}
+          onOpenLogin={() => setIsLoginModalOpen(true)}
+        />
+
+        {/* Modal Masuk (Login) */}
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          onOpenSignUp={() => setIsRegisterModalOpen(true)}
+          onSuccessLogin={handleGoToDashboard}
         />
 
         {/* Modal Pendaftaran Akun Riil (Sign Up) */}
@@ -103,6 +120,15 @@ export default function Home() {
           onOpenSignUp={() => setIsRegisterModalOpen(true)}
           onGoToLanding={handleGoToLanding}
         />
+
+        {/* Modal Masuk / Sign Up can be accessed if needed */}
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          onClose={() => setIsLoginModalOpen(false)}
+          onOpenSignUp={() => setIsRegisterModalOpen(true)}
+          onSuccessLogin={handleGoToDashboard}
+        />
+
         <RegisterModal
           isOpen={isRegisterModalOpen}
           onClose={() => setIsRegisterModalOpen(false)}
@@ -115,10 +141,11 @@ export default function Home() {
   // 3. DASHBOARD VIEW - MAIN APPLICATION
   return (
     <div className="min-h-screen flex flex-col bg-[#EBF1F6] text-slate-800 pb-24 w-full max-w-full overflow-x-hidden">
-      {/* Top Header with Registration & Landing Link */}
+      {/* Top Header with Registration, Landing & Logout Link */}
       <Header
         onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
         onGoToLanding={handleGoToLanding}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
@@ -211,6 +238,14 @@ export default function Home() {
       <TransactionModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+      />
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onOpenSignUp={() => setIsRegisterModalOpen(true)}
+        onSuccessLogin={handleGoToDashboard}
       />
 
       {/* Registration & Real Household Onboarding Modal with Password */}

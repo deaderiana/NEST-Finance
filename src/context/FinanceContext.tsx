@@ -76,6 +76,8 @@ interface FinanceContextType {
   resetAllData: () => void;
 
   // Real Data & Registration Actions
+  login: (email: string, password?: string) => { success: boolean; message: string; user?: UserProfile };
+  logout: () => void;
   registerHousehold: (payload: RegisterHouseholdPayload) => { success: boolean; message: string };
   addNewAccount: (account: InitialAccountInput) => { success: boolean; message: string };
   createInvitation: (email: string) => { success: boolean; message: string; token?: string; inviteLink?: string; shareText?: string };
@@ -104,6 +106,7 @@ interface FinanceContextType {
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'nest_finance_v1_1_state';
+const REGISTRY_STORAGE_KEY = 'nest_multi_household_registry_v1';
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [users, setUsers] = useState<UserProfile[]>(USERS);
@@ -400,6 +403,258 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   /**
+   * Helper: Save active household state to registry of multiple households
+   */
+  const saveStateToRegistry = (
+    hh: Household,
+    uList: UserProfile[],
+    mList: HouseholdMember[],
+    accList: Account[],
+    txList: Transaction[],
+    jrnList: LedgerJournal[],
+    pwd?: string
+  ) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const regRaw = localStorage.getItem(REGISTRY_STORAGE_KEY);
+      let registry: any[] = regRaw ? JSON.parse(regRaw) : [];
+
+      const primaryUser = uList.find((u) => u.role === 'OWNER') || uList[0];
+      const partnerUser = uList.find((u) => u.role === 'PARTNER') || uList[1];
+
+      const record = {
+        householdId: hh.id,
+        householdName: hh.name,
+        primaryEmail: primaryUser?.email || '',
+        partnerEmail: partnerUser?.email || '',
+        appPassword: pwd !== undefined ? pwd : (appPassword || ''),
+        updatedAt: new Date().toISOString(),
+        state: {
+          users: uList,
+          household: hh,
+          members: mList,
+          accounts: accList,
+          categories,
+          transactions: txList,
+          journals: jrnList,
+          budgets,
+          goals,
+          debts,
+          bills,
+          notifications,
+          approvalPolicy,
+          appPassword: pwd !== undefined ? pwd : (appPassword || ''),
+        },
+      };
+
+      const existingIdx = registry.findIndex(
+        (r) =>
+          r.householdId === hh.id ||
+          (r.primaryEmail && r.primaryEmail.toLowerCase() === record.primaryEmail.toLowerCase())
+      );
+
+      if (existingIdx >= 0) {
+        registry[existingIdx] = record;
+      } else {
+        registry.push(record);
+      }
+
+      localStorage.setItem(REGISTRY_STORAGE_KEY, JSON.stringify(registry));
+    } catch (e) {
+      console.error('Failed to save household to registry:', e);
+    }
+  };
+
+  /**
+   * Login with Email and Password
+   */
+  const login = (
+    email: string,
+    password?: string
+  ): { success: boolean; message: string; user?: UserProfile } => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
+
+    // 1. Check default demo accounts
+    if (cleanEmail === 'budi@nest.local' || cleanEmail === 'budi@gmail.com' || cleanEmail === 'budi') {
+      const budiUser = USERS[0];
+      setUsers(USERS);
+      setCurrentUserState(budiUser);
+      setHousehold(INITIAL_HOUSEHOLD);
+      setMembers(INITIAL_MEMBERS);
+      setAccounts(INITIAL_ACCOUNTS);
+      setCategories(INITIAL_CATEGORIES);
+      setTransactions(INITIAL_TRANSACTIONS);
+      setJournals(INITIAL_LEDGER_JOURNALS);
+      setBudgets(INITIAL_BUDGETS);
+      setGoals(INITIAL_SAVINGS_GOALS);
+      setDebts(INITIAL_DEBTS);
+      setBills(INITIAL_BILLS);
+      setNotifications(INITIAL_NOTIFICATIONS);
+      setApprovalPolicy(INITIAL_APPROVAL_POLICY);
+      setAppPasswordState('');
+      setIsLocked(false);
+      localStorage.setItem('nest_active_view', 'dashboard');
+      return {
+        success: true,
+        message: 'Berhasil masuk ke akun demo Budi Pratama (Suami / Owner).',
+        user: budiUser,
+      };
+    }
+
+    if (cleanEmail === 'siti@nest.local' || cleanEmail === 'siti@gmail.com' || cleanEmail === 'siti') {
+      const sitiUser = USERS[1];
+      setUsers(USERS);
+      setCurrentUserState(sitiUser);
+      setHousehold(INITIAL_HOUSEHOLD);
+      setMembers(INITIAL_MEMBERS);
+      setAccounts(INITIAL_ACCOUNTS);
+      setCategories(INITIAL_CATEGORIES);
+      setTransactions(INITIAL_TRANSACTIONS);
+      setJournals(INITIAL_LEDGER_JOURNALS);
+      setBudgets(INITIAL_BUDGETS);
+      setGoals(INITIAL_SAVINGS_GOALS);
+      setDebts(INITIAL_DEBTS);
+      setBills(INITIAL_BILLS);
+      setNotifications(INITIAL_NOTIFICATIONS);
+      setApprovalPolicy(INITIAL_APPROVAL_POLICY);
+      setAppPasswordState('');
+      setIsLocked(false);
+      localStorage.setItem('nest_active_view', 'dashboard');
+      return {
+        success: true,
+        message: 'Berhasil masuk ke akun demo Siti Rahma (Istri / Partner).',
+        user: sitiUser,
+      };
+    }
+
+    // 2. Check registered accounts in registry
+    if (typeof window !== 'undefined') {
+      try {
+        const regRaw = localStorage.getItem(REGISTRY_STORAGE_KEY);
+        if (regRaw) {
+          const registry: any[] = JSON.parse(regRaw);
+          const matchedRecord = registry.find((r) => {
+            const pMatch = r.primaryEmail && r.primaryEmail.toLowerCase() === cleanEmail;
+            const sMatch = r.partnerEmail && r.partnerEmail.toLowerCase() === cleanEmail;
+            return pMatch || sMatch;
+          });
+
+          if (matchedRecord) {
+            // Check password security
+            if (matchedRecord.appPassword && matchedRecord.appPassword.trim()) {
+              if (matchedRecord.appPassword.trim() !== cleanPassword) {
+                return {
+                  success: false,
+                  message: 'Password atau PIN keamanan yang Anda masukkan salah. Silakan coba lagi.',
+                };
+              }
+            }
+
+            // Restore state of this household
+            const st = matchedRecord.state;
+            if (st.users && st.users.length > 0) setUsers(st.users);
+            if (st.household) setHousehold(st.household);
+            if (st.members) setMembers(st.members);
+            if (st.accounts) setAccounts(st.accounts);
+            if (st.categories) setCategories(st.categories);
+            if (st.transactions) setTransactions(st.transactions);
+            if (st.journals) setJournals(st.journals);
+            if (st.budgets) setBudgets(st.budgets);
+            if (st.goals) setGoals(st.goals);
+            if (st.debts) setDebts(st.debts);
+            if (st.bills) setBills(st.bills);
+            if (st.notifications) setNotifications(st.notifications);
+            if (st.approvalPolicy) setApprovalPolicy(st.approvalPolicy);
+            if (matchedRecord.appPassword) {
+              setAppPasswordState(matchedRecord.appPassword);
+              setIsLocked(false);
+            }
+
+            // Determine matching user (Owner or Partner)
+            const isPartner =
+              matchedRecord.partnerEmail &&
+              matchedRecord.partnerEmail.toLowerCase() === cleanEmail;
+            const targetUser = isPartner
+              ? st.users.find((u: any) => u.role === 'PARTNER') || st.users[1] || st.users[0]
+              : st.users.find((u: any) => u.role === 'OWNER') || st.users[0];
+
+            setCurrentUserState(targetUser);
+            setIsLocked(false);
+            localStorage.setItem('nest_active_view', 'dashboard');
+
+            return {
+              success: true,
+              message: `Selamat datang kembali, ${targetUser.display_name}! Pembukuan keluarga ${st.household.name} aktif.`,
+              user: targetUser,
+            };
+          }
+        }
+      } catch (err) {
+        console.error('Error during registry login check:', err);
+      }
+    }
+
+    // 3. Fallback: Check currently loaded household state in localStorage
+    const curPrimary = users.find((u) => u.role === 'OWNER');
+    const curPartner = users.find((u) => u.role === 'PARTNER');
+    const isCurrentPrimary = curPrimary?.email && curPrimary.email.toLowerCase() === cleanEmail;
+    const isCurrentPartner = curPartner?.email && curPartner.email.toLowerCase() === cleanEmail;
+
+    if (isCurrentPrimary || isCurrentPartner) {
+      if (appPassword && appPassword.trim()) {
+        if (appPassword.trim() !== cleanPassword) {
+          return {
+            success: false,
+            message: 'Password atau PIN keamanan yang Anda masukkan salah.',
+          };
+        }
+      }
+
+      const activeUser = isCurrentPartner ? curPartner : curPrimary;
+      setCurrentUserState(activeUser!);
+      setIsLocked(false);
+      localStorage.setItem('nest_active_view', 'dashboard');
+      return {
+        success: true,
+        message: `Selamat datang kembali, ${activeUser!.display_name}!`,
+        user: activeUser,
+      };
+    }
+
+    return {
+      success: false,
+      message: 'Akun dengan email tersebut belum terdaftar di sistem. Silakan mendaftar (Sign Up) terlebih dahulu.',
+    };
+  };
+
+  /**
+   * Logout from active session and return to Landing Page
+   */
+  const logout = () => {
+    // Save latest state to registry before logout
+    saveStateToRegistry(
+      household,
+      users,
+      members,
+      accounts,
+      transactions,
+      journals,
+      appPassword
+    );
+
+    // Lock session
+    if (isPasswordSet) {
+      setIsLocked(true);
+    }
+
+    // Set view mode to landing
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nest_active_view', 'landing');
+    }
+  };
+
+  /**
    * Register Real Household & Accounts (PRD Section 5.1 & 7.1)
    */
   const registerHousehold = (payload: RegisterHouseholdPayload): { success: boolean; message: string } => {
@@ -550,6 +805,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBills([]);
       setInvitations([]);
     }
+
+        // Also save into multi-household registry
+    saveStateToRegistry(
+      newHousehold,
+      [newPrimaryUser, newPartnerUser],
+      newMembers,
+      newAccounts,
+      payload.wipeDemoData ? [] : transactions,
+      openingJournals,
+      payload.securityPassword?.trim() || ''
+    );
 
     return {
       success: true,
@@ -1124,6 +1390,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateApprovalPolicy,
         markNotificationRead,
         resetAllData,
+        login,
+        logout,
         registerHousehold,
         addNewAccount,
         createInvitation,

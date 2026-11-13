@@ -10,6 +10,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Lock,
+  LogIn,
   PlusCircle,
   Share2,
   Shield,
@@ -26,11 +27,13 @@ import {
 interface LandingPageViewProps {
   onGoToDashboard: () => void;
   onOpenSignUp: () => void;
+  onOpenLogin: () => void;
 }
 
 export const LandingPageView: React.FC<LandingPageViewProps> = ({
   onGoToDashboard,
   onOpenSignUp,
+  onOpenLogin,
 }) => {
   const { household, isPasswordSet } = useFinance();
   const isDemoAccount = household.id === 'hh-pratama-rahma';
@@ -63,12 +66,11 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
           {/* Quick Action Navigation */}
           <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
             <button
-              onClick={onGoToDashboard}
+              onClick={onOpenLogin}
               className="clay-button px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-indigo-600 transition flex items-center space-x-1.5"
             >
-              <LayoutDashboard className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span className="hidden xs:inline">Masuk</span>
-              <span>Dashboard</span>
+              <LogIn className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Masuk (Login)</span>
             </button>
 
             <button
@@ -102,12 +104,12 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
 
           {/* Subtitle */}
           <p className="text-xs sm:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Aplikasi pembukuan rumah tangga berpasangan pertama dengan sistem persetujuan transaksi (*Maker-Checker*).
-            Transaksi besar wajib disetujui pasangan sebelum saldo terpotong, menjaga transparansi tanpa rasa curiga.
+            Aplikasi pembukuan rumah tangga berpasangan dengan sistem persetujuan transaksi (*Maker-Checker*).
+            Transaksi besar wajib disetujui pasangan sebelum saldo terpotong, menjaga transparansi dan privasi data multi-pengguna.
           </p>
 
           {/* Primary CTA Buttons */}
-          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-lg mx-auto">
             <button
               onClick={onOpenSignUp}
               className="w-full sm:w-auto flex-1 clay-button clay-button-primary py-3.5 px-6 text-sm sm:text-base font-extrabold shadow-clay-primary flex items-center justify-center space-x-2 hover:scale-105 active:scale-95 transition"
@@ -117,12 +119,21 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             </button>
 
             <button
-              onClick={onGoToDashboard}
+              onClick={onOpenLogin}
               className="w-full sm:w-auto flex-1 clay-button py-3.5 px-6 text-sm sm:text-base font-bold text-slate-700 hover:text-indigo-600 transition flex items-center justify-center space-x-2"
             >
-              <LayoutDashboard className="w-5 h-5 text-indigo-600" />
-              <span>{isDemoAccount ? 'Coba Demo Dashboard' : 'Buka Dashboard'}</span>
-              <ArrowRight className="w-4 h-4 ml-0.5" />
+              <LogIn className="w-5 h-5 text-indigo-600" />
+              <span>Masuk ke Akun (Login)</span>
+            </button>
+          </div>
+
+          {/* Optional Demo Dashboard link */}
+          <div className="pt-1">
+            <button
+              onClick={onGoToDashboard}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-4 transition"
+            >
+              {isDemoAccount ? 'Jelajahi Demo Dashboard &rarr;' : 'Lanjut ke Dashboard Aktif &rarr;'}
             </button>
           </div>
 
@@ -159,7 +170,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
         </div>
       </section>
 
-      {/* 3. SECTION PENDAFTARAN / SIGN UP PROMINENT CARD */}
+      {/* 3. SECTION PENDAFTARAN & LOGIN CARD */}
       <section className="px-3 sm:px-6 py-8 bg-white/60 border-y border-white">
         <div className="max-w-4xl mx-auto">
           <div className="clay-card p-5 sm:p-8 bg-gradient-to-br from-indigo-700 via-indigo-800 to-slate-900 text-white shadow-clay-lg relative overflow-hidden">
@@ -167,25 +178,34 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
               <div className="space-y-2 text-center md:text-left">
                 <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-extrabold tracking-wide uppercase border border-emerald-400/30">
                   <UserPlus className="w-3.5 h-3.5" />
-                  <span>Mulai Pembukuan Riil Anda</span>
+                  <span>Keamanan Data &amp; Multi-Akun</span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-black text-white">
-                  Pendaftaran Akun Baru Keluarga (Sign Up)
+                  Akses Pembukuan Keluarga Mandiri
                 </h2>
                 <p className="text-xs sm:text-sm text-indigo-100 max-w-xl leading-relaxed">
-                  Daftarkan nama keluarga Anda, atur rekening awal (BCA, Mandiri, BRI, GoPay, Tunai),
-                  tentukan identitas Suami &amp; Istri, serta amankan aplikasi dengan Password/PIN.
+                  Data masing-masing keluarga terisolasi dengan enkripsi sesi lokal dan proteksi password.
+                  Sudah memiliki akun? Masuk dengan email &amp; password Anda, atau daftarkan akun baru sekarang.
                 </p>
               </div>
 
-              <div className="shrink-0 w-full md:w-auto">
+              <div className="shrink-0 flex flex-col sm:flex-row gap-2.5 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={onOpenLogin}
+                  className="w-full sm:w-auto clay-button py-3 px-5 bg-white text-indigo-900 font-extrabold text-xs sm:text-sm shadow-md transition flex items-center justify-center space-x-2 hover:bg-slate-50"
+                >
+                  <LogIn className="w-4 h-4 text-indigo-600" />
+                  <span>Masuk (Login)</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={onOpenSignUp}
-                  className="w-full md:w-auto clay-button py-3.5 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-extrabold text-sm sm:text-base shadow-lg transition flex items-center justify-center space-x-2 hover:scale-105 active:scale-95"
+                  className="w-full sm:w-auto clay-button py-3 px-5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-extrabold text-xs sm:text-sm shadow-lg transition flex items-center justify-center space-x-2 hover:scale-105 active:scale-95"
                 >
-                  <UserPlus className="w-5 h-5" />
-                  <span>Isi Formulir Pendaftaran</span>
+                  <UserPlus className="w-4 h-4" />
+                  <span>Daftar Akun Baru</span>
                 </button>
               </div>
             </div>
@@ -200,7 +220,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
             Kenapa Pasangan Memilih NEST.Finance?
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 max-w-xl mx-auto">
-            Dirancang khusus untuk menghilangkan keraguan dan pertengkaran keuangan dengan pembukuan ganda yang adil dan transparan.
+            Dirancang khusus untuk menjaga privasi finansial keluarga dan mencegah keputusan belanja sepihak.
           </p>
         </div>
 
@@ -268,7 +288,7 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
               </div>
               <h4 className="font-bold text-sm text-slate-800">Daftar Akun Baru</h4>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Isi nama Anda, nama pasangan, dan rekening bank atau dompet riil yang digunakan.
+                Isi nama Anda, nama pasangan, password keamanan, dan rekening bank atau dompet riil.
               </p>
             </div>
 
@@ -305,6 +325,12 @@ export const LandingPageView: React.FC<LandingPageViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-4">
+            <button
+              onClick={onOpenLogin}
+              className="font-bold text-indigo-600 hover:text-indigo-800 transition"
+            >
+              Masuk (Login)
+            </button>
             <button
               onClick={onOpenSignUp}
               className="font-bold text-indigo-600 hover:text-indigo-800 transition"
