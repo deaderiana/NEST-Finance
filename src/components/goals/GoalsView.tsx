@@ -59,7 +59,8 @@ export const GoalsView: React.FC = () => {
   const [debtPrincipal, setDebtPrincipal] = useState('');
   const [debtInstallment, setDebtInstallment] = useState('');
   const [debtDueDateDay, setDebtDueDateDay] = useState('10');
-  const [debtInterestRate, setDebtInterestRate] = useState('5');
+  const [debtInterestRate, setDebtInterestRate] = useState('0');
+  const [debtScheme, setDebtScheme] = useState<'SYARIAH' | 'CONVENTIONAL'>('SYARIAH');
 
   // Form states for Bill
   const [billTitle, setBillTitle] = useState('');
@@ -150,7 +151,7 @@ export const GoalsView: React.FC = () => {
       remaining_principal: principal,
       monthly_installment: installment,
       due_date_day: parseInt(debtDueDateDay, 10) || 10,
-      interest_rate_pct: parseFloat(debtInterestRate) || 0,
+      interest_rate_pct: debtScheme === 'SYARIAH' ? 0 : (parseFloat(debtInterestRate) || 0),
     });
     if (res.success) {
       setStatusMessage(res.message);
@@ -427,7 +428,7 @@ export const GoalsView: React.FC = () => {
                         <div>
                           <h4 className="font-bold text-xs text-slate-800">{debt.name}</h4>
                           <span className="text-[10px] text-slate-400">
-                            Kreditur: {debt.creditor} · Bunga: {debt.interest_rate_pct}%
+                            Kreditur: {debt.creditor} · {debt.interest_rate_pct === 0 ? '🌙 Syariah (Angsuran Tetap)' : `Bunga: ${debt.interest_rate_pct}%`}
                           </span>
                         </div>
                       </div>
@@ -452,7 +453,7 @@ export const GoalsView: React.FC = () => {
                         </strong>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 block">Cicilan / Bulan</span>
+                        <span className="text-[10px] text-slate-400 block">{debtScheme === 'SYARIAH' ? 'Angsuran Tetap / Bulan' : 'Cicilan / Bulan'}</span>
                         <strong className="text-slate-800">
                           {formatIDR(debt.monthly_installment, hideBalance)}
                         </strong>
@@ -691,6 +692,42 @@ export const GoalsView: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateDebtSubmit} className="space-y-3">
+              {/* Skema Pembiayaan: Syariah vs Konvensional */}
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
+                  Skema Pembiayaan
+                </label>
+                <div className="flex items-center space-x-1.5 p-1 bg-slate-100 rounded-xl clay-inset">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDebtScheme('SYARIAH');
+                      setDebtInterestRate('0');
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      debtScheme === 'SYARIAH'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    🌙 Syariah (Angsuran Tetap / Bebas Bunga)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDebtScheme('CONVENTIONAL');
+                      if (debtInterestRate === '0') setDebtInterestRate('7.5');
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      debtScheme === 'CONVENTIONAL'
+                        ? 'bg-rose-500 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    🏛️ Konvensional
+                  </button>
+                </div>
+              </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
                   Nama Cicilan / Hutang
@@ -721,7 +758,7 @@ export const GoalsView: React.FC = () => {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
-                    Sisa Pokok (IDR)
+                    {debtScheme === 'SYARIAH' ? 'Total Sisa Kewajiban (IDR)' : 'Sisa Pokok (IDR)'}
                   </label>
                   <input
                     type="number"
