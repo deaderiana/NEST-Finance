@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useFinance } from '@/context/FinanceContext';
 import { TransactionType } from '@/types/finance';
-import { formatIDR } from '@/lib/ledgerEngine';
+import { formatIDR, formatDateID } from '@/lib/ledgerEngine';
 import {
   Sparkles,
   X,
@@ -13,6 +13,10 @@ import {
   ArrowDownLeft,
   ArrowRightLeft,
   AlertTriangle,
+  Zap,
+  Plus,
+  CheckCircle2,
+  Calendar,
 } from 'lucide-react';
 
 interface TransactionModalProps {
@@ -27,14 +31,19 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     categories,
     approvalPolicy,
     createTransaction,
+    bills,
+    addBill,
+    payBill,
+    hideBalance,
+    setActiveTab,
   } = useFinance();
 
-  const [inputMode, setInputMode] = useState<'QUICK' | 'ADVANCED' | 'AI'>('QUICK');
+  const [inputMode, setInputMode] = useState<'QUICK' | 'ADVANCED' | 'AI' | 'BILLS'>('QUICK');
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
-  const [txType, setTxType] = useState<TransactionType>('EXPENSE');
+  const [txType, setTxType] = useState<TransactionType | 'BILL'>('EXPENSE');
   const [amountStr, setAmountStr] = useState('');
   const [amountNum, setAmountNum] = useState(0);
   const [description, setDescription] = useState('');
@@ -47,6 +56,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // States for new bill form within the modal
+  const [isAddingNewBill, setIsAddingNewBill] = useState(false);
+  const [newBillTitle, setNewBillTitle] = useState('');
+  const [newBillAmount, setNewBillAmount] = useState('');
+  const [newBillDueDate, setNewBillDueDate] = useState('');
+  const [newBillPeriod, setNewBillPeriod] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
 
   useEffect(() => {
     if (accounts.length > 0 && !accountId) {
@@ -98,24 +114,24 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       setTxType('EXPENSE');
       setAmountNum(850000);
       setAmountStr((850000).toLocaleString('id-ID'));
-      setDescription('Token Listrik PLN Bulanan');
-      setMerchant('PLN');
+      setDescription('Tagihan Listrik PLN Bulanan');
+      setMerchant('PLN Pascabayar');
       setCategoryId(
-        categories.find((c) => c.name.toLowerCase().includes('listrik') || c.name.toLowerCase().includes('tagihan') || c.name.toLowerCase().includes('utilitas'))?.id ||
+        categories.find((c) => c.name.toLowerCase().includes('tagihan') || c.name.toLowerCase().includes('utilitas'))?.id ||
         categories[0]?.id || ''
       );
-      setAiNotice('Tagihan PLN berhasil dibaca: Rp 850.000');
+      setAiNotice('Tagihan PLN berhasil dibaca: Total Rp 850.000');
     } else if (type === 'TOKOPEDIA') {
       setTxType('EXPENSE');
       setAmountNum(1250000);
       setAmountStr((1250000).toLocaleString('id-ID'));
-      setDescription('Belanja Elektronik Rumah Tokopedia');
+      setDescription('Belanja Keperluan Rumah Tokopedia');
       setMerchant('Tokopedia Official Store');
       setCategoryId(
         categories.find((c) => c.name.toLowerCase().includes('rumah') || c.name.toLowerCase().includes('belanja'))?.id ||
         categories[0]?.id || ''
       );
-      setAiNotice('Invoice Tokopedia berhasil dibaca: Rp 1.250.000 (Perlu Maker-Checker Pasangan)');
+      setAiNotice('Transaksi Tokopedia Rp 1.250.000 (Melebihi ambang batas Maker-Checker!)');
     }
     setInputMode('QUICK');
   };
@@ -126,16 +142,18 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
     setTimeout(() => {
       const lower = aiPrompt.toLowerCase();
-      let extractedAmount = 0;
-      const numMatch = lower.match(/(\d+[\d\.,]*)\s*(rb|ribu|k|jt|juta)?/);
+      const numMatch = lower.match(/\d+([.,]\d+)?(\s*(rb|ribu|jt|juta))?/i);
+      let extractedAmount = 50000;
+
       if (numMatch) {
-        let val = parseFloat(numMatch[1].replace(/\./g, '').replace(',', '.'));
-        const unit = numMatch[2];
-        if (unit === 'rb' || unit === 'ribu' || unit === 'k') val *= 1000;
-        else if (unit === 'jt' || unit === 'juta') val *= 1000000;
-        extractedAmount = Math.round(val);
-      } else {
-        extractedAmount = 150000;
+        let clean = numMatch[0].replace(/\s+/g, '');
+        if (clean.includes('jt') || clean.includes('juta')) {
+          extractedAmount = parseFloat(clean.replace(/[^0-9.]/g, '')) * 1000000;
+        } else if (clean.includes('rb') || clean.includes('ribu')) {
+          extractedAmount = parseFloat(clean.replace(/[^0-9.]/g, '')) * 1000;
+        } else {
+          extractedAmount = parseInt(clean.replace(/[^0-9]/g, ''), 10) || 50000;
+        }
       }
 
       setAmountNum(extractedAmount);
@@ -171,7 +189,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     }
 
     const res = createTransaction({
-      transaction_type: txType,
+      transaction_type: txType as TransactionType,
       amount: amountNum,
       description: description.trim(),
       account_id: accountId,
@@ -201,6 +219,42 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     }
   };
 
+  const handlePayBillDirectly = (billId: string) => {
+    const acc = accounts.find((a) => a.scope === 'SHARED') || accounts[0];
+    const res = payBill(billId, acc.id);
+    if (res.success) {
+      setStatusMessage({ type: 'success', text: res.message });
+    } else {
+      setStatusMessage({ type: 'error', text: res.message });
+    }
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleCreateBillFromModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseInt(newBillAmount.replace(/[^0-9]/g, ''), 10);
+    if (!newBillTitle.trim() || !amt || amt <= 0) {
+      setStatusMessage({ type: 'error', text: 'Nama tagihan dan nominal wajib diisi.' });
+      return;
+    }
+    const res = addBill({
+      title: newBillTitle.trim(),
+      amount: amt,
+      due_date: newBillDueDate || new Date().toISOString().split('T')[0],
+      recurring_period: newBillPeriod,
+    });
+    if (res.success) {
+      setStatusMessage({ type: 'success', text: res.message });
+      setIsAddingNewBill(false);
+      setNewBillTitle('');
+      setNewBillAmount('');
+      setNewBillDueDate('');
+    } else {
+      setStatusMessage({ type: 'error', text: res.message });
+    }
+    setTimeout(() => setStatusMessage(null), 3500);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -213,7 +267,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-slate-800">Catat Transaksi</h3>
+              <h3 className="font-bold text-base text-slate-800">Catat Transaksi & Tagihan</h3>
               <p className="text-[11px] text-slate-400">
                 Pencatat: <strong>{currentUser?.display_name || 'User'}</strong> ({currentUser?.relationship || 'Anggota'})
               </p>
@@ -233,41 +287,225 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5 space-y-3">
           {/* Input Mode Selector */}
-          <div className="flex items-center justify-center mb-3">
+          <div className="flex items-center justify-center mb-1">
             <div className="flex items-center space-x-1 p-1 bg-[#E8EFF5] rounded-full clay-inset text-xs">
               <button
                 type="button"
-                onClick={() => setInputMode('QUICK')}
+                onClick={() => {
+                  setInputMode('QUICK');
+                  if (txType === 'BILL') setTxType('EXPENSE');
+                }}
                 className={`px-3 py-1 rounded-full font-semibold transition-all ${
-                  inputMode === 'QUICK' ? 'clay-pill-active' : 'clay-pill-inactive'
+                  inputMode === 'QUICK' && txType !== 'BILL' ? 'clay-pill-active' : 'clay-pill-inactive'
                 }`}
               >
                 Input Cepat
               </button>
               <button
                 type="button"
-                onClick={() => setInputMode('ADVANCED')}
+                onClick={() => {
+                  setInputMode('ADVANCED');
+                  if (txType === 'BILL') setTxType('EXPENSE');
+                }}
                 className={`px-3 py-1 rounded-full font-semibold transition-all ${
-                  inputMode === 'ADVANCED' ? 'clay-pill-active' : 'clay-pill-inactive'
+                  inputMode === 'ADVANCED' && txType !== 'BILL' ? 'clay-pill-active' : 'clay-pill-inactive'
                 }`}
               >
                 Lengkap
               </button>
               <button
                 type="button"
-                onClick={() => setInputMode('AI')}
+                onClick={() => {
+                  setInputMode('AI');
+                  if (txType === 'BILL') setTxType('EXPENSE');
+                }}
                 className={`px-3 py-1 rounded-full font-semibold transition-all flex items-center space-x-1 ${
                   inputMode === 'AI' ? 'clay-pill-active' : 'clay-pill-inactive'
                 }`}
               >
                 <Bot className="w-3.5 h-3.5" />
-                <span>AI / OCR Struk</span>
+                <span>AI Struk</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTxType('BILL');
+                  setInputMode('BILLS');
+                }}
+                className={`px-3 py-1 rounded-full font-semibold transition-all flex items-center space-x-1 ${
+                  txType === 'BILL' || inputMode === 'BILLS' ? 'clay-pill-active bg-amber-500 text-white' : 'clay-pill-inactive text-amber-700'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                <span>Tagihan Rutin</span>
               </button>
             </div>
           </div>
 
-          {/* AI & OCR Assistant Mode */}
-          {inputMode === 'AI' ? (
+          {/* TAB 4: TAGIHAN RUTIN VIEW IN MODAL */}
+          {txType === 'BILL' || inputMode === 'BILLS' ? (
+            <div className="space-y-3 py-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-slate-800">Tagihan Rutin & Pengingat</h4>
+                  <p className="text-[10px] text-slate-500">
+                    Bayar langsung dengan 1-klik atau daftarkan pos tagihan baru
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingNewBill(!isAddingNewBill)}
+                  className="clay-button clay-button-primary px-3 py-1.5 text-xs font-bold flex items-center space-x-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isAddingNewBill ? 'Tutup Form' : 'Tambah Tagihan'}</span>
+                </button>
+              </div>
+
+              {/* Status Message */}
+              {statusMessage && (
+                <div
+                  className={`p-2.5 rounded-xl text-xs font-semibold ${
+                    statusMessage.type === 'success'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-rose-100 text-rose-800'
+                  }`}
+                >
+                  {statusMessage.text}
+                </div>
+              )}
+
+              {/* Inline Form to add a new bill */}
+              {isAddingNewBill && (
+                <form onSubmit={handleCreateBillFromModal} className="p-3.5 rounded-2xl bg-white border border-slate-200/90 space-y-2.5 shadow-sm">
+                  <h5 className="font-bold text-xs text-slate-800">Daftarkan Tagihan Bulanan Baru</h5>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 block mb-1">Nama Tagihan</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: Listrik PLN, WiFi Indihome, PDAM"
+                      value={newBillTitle}
+                      onChange={(e) => setNewBillTitle(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl clay-inset text-xs bg-white text-slate-800"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Nominal (IDR)</label>
+                      <input
+                        type="number"
+                        required
+                        placeholder="350000"
+                        value={newBillAmount}
+                        onChange={(e) => setNewBillAmount(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-xl clay-inset text-xs font-bold bg-white text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Jatuh Tempo</label>
+                      <input
+                        type="date"
+                        value={newBillDueDate}
+                        onChange={(e) => setNewBillDueDate(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-xl clay-inset text-xs bg-white text-slate-800"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingNewBill(false)}
+                      className="px-3 py-1 text-xs text-slate-500 hover:bg-slate-100 rounded-full"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="clay-button clay-button-primary px-3 py-1 text-xs font-bold"
+                    >
+                      Simpan Tagihan
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Bills List */}
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {bills.length === 0 ? (
+                  <div className="p-5 rounded-2xl bg-white border border-slate-200 text-center space-y-2">
+                    <Zap className="w-8 h-8 text-amber-500 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700">Belum ada tagihan rutin tercatat</p>
+                    <p className="text-[11px] text-slate-400">
+                      Klik tombol <strong>Tambah Tagihan</strong> di atas untuk mendaftarkan tagihan pertama Anda.
+                    </p>
+                  </div>
+                ) : (
+                  bills.map((b) => (
+                    <div
+                      key={b.id}
+                      className="p-3 rounded-2xl bg-white border border-slate-200/80 flex items-center justify-between"
+                    >
+                      <div className="flex items-center space-x-2.5">
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                            b.is_paid ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                          }`}
+                        >
+                          <Zap className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h5 className="font-bold text-xs text-slate-800">{b.title}</h5>
+                          <span className="text-[10px] text-slate-400">
+                            Jatuh tempo: {formatDateID(b.due_date)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <div className="text-right">
+                          <span className="text-xs font-bold text-slate-800 block">
+                            {formatIDR(b.amount, hideBalance)}
+                          </span>
+                          <span className={`text-[10px] font-semibold ${b.is_paid ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {b.is_paid ? 'Lunas' : 'Belum Bayar'}
+                          </span>
+                        </div>
+                        {!b.is_paid ? (
+                          <button
+                            type="button"
+                            onClick={() => handlePayBillDirectly(b.id)}
+                            className="clay-button clay-button-primary px-3 py-1 text-xs font-bold"
+                          >
+                            Bayar
+                          </button>
+                        ) : (
+                          <span className="p-1 bg-emerald-100 text-emerald-700 rounded-full">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Link to Full View */}
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('goals');
+                    onClose();
+                  }}
+                  className="text-xs text-clay-primary font-bold hover:underline"
+                >
+                  Buka Menu Lengkap Tabungan & Tagihan →
+                </button>
+              </div>
+            </div>
+          ) : inputMode === 'AI' ? (
+            /* AI & OCR Assistant Mode */
             <div className="space-y-4 py-2">
               <div className="p-4 rounded-2xl bg-indigo-50/80 border border-indigo-200/80 space-y-3">
                 <div className="flex items-center space-x-2">
@@ -346,44 +584,56 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
               )}
 
               {/* Transaction Type Pills */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setTxType('EXPENSE')}
-                  className={`py-2 px-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+                  className={`py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 ${
                     txType === 'EXPENSE'
                       ? 'clay-button-expense text-white'
                       : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>Uang Keluar</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Uang Keluar</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setTxType('INCOME')}
-                  className={`py-2 px-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+                  className={`py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 ${
                     txType === 'INCOME'
                       ? 'clay-button-income text-white'
                       : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <ArrowDownLeft className="w-3.5 h-3.5" />
-                  <span>Uang Masuk</span>
+                  <ArrowDownLeft className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Uang Masuk</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setTxType('TRANSFER')}
-                  className={`py-2 px-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+                  className={`py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 ${
                     txType === 'TRANSFER'
                       ? 'bg-purple-600 text-white shadow-sm'
                       : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  <ArrowRightLeft className="w-3.5 h-3.5" />
-                  <span>Pindah Dana</span>
+                  <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Pindah Dana</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTxType('BILL');
+                    setInputMode('BILLS');
+                  }}
+                  className="py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="truncate">Tagihan Rutin</span>
                 </button>
               </div>
 

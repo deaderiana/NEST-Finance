@@ -17,7 +17,9 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ onOpenAddModal }) => {
-  const { activeTab, setActiveTab, pendingApprovalsCount } = useFinance();
+  const { activeTab, setActiveTab, pendingApprovalsCount, bills } = useFinance();
+
+  const unpaidBillsCount = bills ? bills.filter((b) => !b.is_paid).length : 0;
 
   const leftNavItems = [
     { id: 'dashboard', label: 'Beranda', icon: Home },
@@ -31,7 +33,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenAddModal }) => {
   ];
 
   const rightNavItems = [
-    { id: 'goals', label: 'Tabungan', icon: Target },
+    {
+      id: 'goals',
+      label: 'Tabungan & Tagihan',
+      icon: Target,
+      badge: unpaidBillsCount > 0 ? unpaidBillsCount : undefined,
+    },
     { id: 'reports', label: 'Laporan', icon: BarChart3 },
     { id: 'settings', label: 'Lainnya', icon: Settings },
   ];
@@ -49,7 +56,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenAddModal }) => {
       <button
         key={item.id}
         onClick={() => setActiveTab(item.id)}
-        className={`flex flex-col items-center justify-center py-1 px-1.5 sm:px-2.5 rounded-2xl transition-all relative flex-1 ${
+        className={`flex flex-col items-center justify-center py-1 px-1 sm:px-2 rounded-2xl transition-all relative flex-1 ${
           isActive
             ? 'text-clay-primary font-bold'
             : 'text-slate-500 hover:text-slate-800 font-medium'
@@ -64,10 +71,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenAddModal }) => {
         >
           <Icon className="w-5 h-5" />
         </div>
-        <span className="text-[10px] mt-0.5 tracking-tight leading-tight">{item.label}</span>
+        <span className="text-[9px] sm:text-[10px] mt-0.5 tracking-tight leading-tight text-center truncate max-w-[68px]">
+          {item.label}
+        </span>
 
         {item.badge && (
-          <span className="absolute top-0 right-2 w-4 h-4 bg-amber-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center shadow ring-1 ring-white">
+          <span className="absolute top-0 right-1 sm:right-2 w-4 h-4 bg-amber-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center shadow ring-1 ring-white">
             {item.badge}
           </span>
         )}
@@ -88,13 +97,13 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenAddModal }) => {
           <button
             onClick={onOpenAddModal}
             className="absolute left-1/2 -translate-x-1/2 -top-5 sm:-top-6 w-14 h-14 rounded-full bg-gradient-to-tr from-clay-primary to-indigo-600 text-white flex items-center justify-center shadow-clay-primary hover:scale-105 active:scale-95 transition-all ring-4 ring-[#EBF1F6] z-10"
-            title="Tambah Transaksi Baru"
+            title="Tambah Transaksi atau Tagihan"
           >
             <Plus className="w-7 h-7 stroke-[2.5]" />
           </button>
         </div>
 
-        {/* Right 3 Menu Items (Tabungan, Laporan, Lainnya) */}
+        {/* Right 3 Menu Items (Tabungan & Tagihan, Laporan, Lainnya) */}
         <div className="flex-1 flex items-center justify-around">
           {rightNavItems.map(renderNavButton)}
         </div>

@@ -262,7 +262,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (parsed.approvalPolicy) setApprovalPolicy(parsed.approvalPolicy);
         if (parsed.appPassword) {
           setAppPasswordState(parsed.appPassword);
-          setIsLocked(true);
+          const isSessionUnlocked = typeof window !== 'undefined' && sessionStorage.getItem('nest_session_unlocked') === 'true';
+          setIsLocked(!isSessionUnlocked);
         }
 
         if (parsed.currentUserId) {
@@ -373,6 +374,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     if (attempt.trim() === appPassword.trim()) {
       setIsLocked(false);
+      try { sessionStorage.setItem('nest_session_unlocked', 'true'); } catch (e) {}
       return { success: true, message: 'Kunci berhasil dibuka.' };
     }
     return { success: false, message: 'Password atau PIN salah. Silakan coba lagi.' };
@@ -380,6 +382,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const lockApp = () => {
     if (isPasswordSet) {
+      try { sessionStorage.removeItem('nest_session_unlocked'); } catch (e) {}
       setIsLocked(true);
     }
   };
@@ -500,7 +503,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setApprovalPolicy(INITIAL_APPROVAL_POLICY);
       setAppPasswordState('');
       setIsLocked(false);
-      localStorage.setItem('nest_active_view', 'dashboard');
+    try { sessionStorage.setItem('nest_session_unlocked', 'true'); } catch (e) {}
+    localStorage.setItem('nest_active_view', 'dashboard');
       return {
         success: true,
         message: 'Berhasil masuk ke akun demo Budi Pratama (Suami / Owner).',
@@ -526,7 +530,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setApprovalPolicy(INITIAL_APPROVAL_POLICY);
       setAppPasswordState('');
       setIsLocked(false);
-      localStorage.setItem('nest_active_view', 'dashboard');
+    try { sessionStorage.setItem('nest_session_unlocked', 'true'); } catch (e) {}
+    localStorage.setItem('nest_active_view', 'dashboard');
       return {
         success: true,
         message: 'Berhasil masuk ke akun demo Siti Rahma (Istri / Partner).',
@@ -587,7 +592,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             setCurrentUserState(targetUser);
             setIsLocked(false);
-            localStorage.setItem('nest_active_view', 'dashboard');
+    try { sessionStorage.setItem('nest_session_unlocked', 'true'); } catch (e) {}
+    localStorage.setItem('nest_active_view', 'dashboard');
 
             return {
               success: true,
@@ -620,6 +626,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const activeUser = isCurrentPartner ? curPartner : curPrimary;
       setCurrentUserState(activeUser!);
       setIsLocked(false);
+      try { sessionStorage.setItem('nest_session_unlocked', 'true'); } catch (e) {}
       localStorage.setItem('nest_active_view', 'dashboard');
       return {
         success: true,
