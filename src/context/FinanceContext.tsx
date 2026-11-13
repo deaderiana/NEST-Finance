@@ -70,6 +70,9 @@ interface FinanceContextType {
   rejectTransaction: (txId: string, reason?: string) => { success: boolean; message: string };
   reverseTransaction: (txId: string) => { success: boolean; message: string };
   addSavingsContribution: (goalId: string, amount: number, accountId: string) => { success: boolean; message: string };
+  addSavingsGoal: (goal: { name: string; target_amount: number; target_date: string; category_icon?: string }) => { success: boolean; message: string };
+  addDebt: (debt: { name: string; creditor: string; initial_principal: number; remaining_principal?: number; interest_rate_pct: number; monthly_installment: number; due_date_day: number }) => { success: boolean; message: string };
+  addBill: (bill: { title: string; amount: number; due_date: string; recurring_period?: 'MONTHLY' | 'YEARLY' }) => { success: boolean; message: string };
   payBill: (billId: string, accountId: string) => { success: boolean; message: string };
   updateApprovalPolicy: (threshold: number) => void;
   markNotificationRead: (notifId: string) => void;
@@ -1619,6 +1622,80 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   };
 
+  const addSavingsGoal = (data: {
+    name: string;
+    target_amount: number;
+    target_date: string;
+    category_icon?: string;
+  }) => {
+    if (!data.name || !data.target_amount || data.target_amount <= 0) {
+      return { success: false, message: 'Harap isi nama target dan nominal sasaran.' };
+    }
+    const newGoal: SavingsGoal = {
+      id: `goal_${Date.now()}`,
+      household_id: household.id,
+      name: data.name,
+      target_amount: data.target_amount,
+      current_amount: 0,
+      target_date: data.target_date || new Date(Date.now() + 180 * 24 * 3600 * 1000).toISOString().split('T')[0],
+      category_icon: data.category_icon || 'Target',
+      status: 'ACTIVE',
+    };
+    setGoals((prev) => [newGoal, ...prev]);
+    return { success: true, message: `Target tabungan "${data.name}" berhasil dibuat.` };
+  };
+
+  const addDebt = (data: {
+    name: string;
+    creditor: string;
+    initial_principal: number;
+    remaining_principal?: number;
+    interest_rate_pct: number;
+    monthly_installment: number;
+    due_date_day: number;
+  }) => {
+    if (!data.name || !data.initial_principal || data.initial_principal <= 0) {
+      return { success: false, message: 'Harap isi nama cicilan dan pokok pinjaman.' };
+    }
+    const newDebt: Debt = {
+      id: `debt_${Date.now()}`,
+      household_id: household.id,
+      name: data.name,
+      creditor: data.creditor || 'Bank / Lembaga Pembiayaan',
+      initial_principal: data.initial_principal,
+      remaining_principal: data.remaining_principal !== undefined ? data.remaining_principal : data.initial_principal,
+      interest_rate_pct: data.interest_rate_pct || 0,
+      monthly_installment: data.monthly_installment || 0,
+      due_date_day: data.due_date_day || 10,
+      status: 'ACTIVE',
+    };
+    setDebts((prev) => [newDebt, ...prev]);
+    return { success: true, message: `Cicilan / hutang "${data.name}" berhasil dicatat.` };
+  };
+
+  const addBill = (data: {
+    title: string;
+    amount: number;
+    due_date: string;
+    recurring_period?: 'MONTHLY' | 'YEARLY';
+  }) => {
+    if (!data.title || !data.amount || data.amount <= 0) {
+      return { success: false, message: 'Harap isi nama tagihan dan nominal dengan benar.' };
+    }
+    const newBill: Bill = {
+      id: `bill_${Date.now()}`,
+      household_id: household.id,
+      title: data.title,
+      amount: data.amount,
+      due_date: data.due_date || new Date().toISOString().split('T')[0],
+      category_id: categories[0]?.id || 'cat_utilitas',
+      is_paid: false,
+      recurring_period: data.recurring_period || 'MONTHLY',
+    };
+    setBills((prev) => [newBill, ...prev]);
+    return { success: true, message: `Tagihan rutin "${data.title}" berhasil ditambahkan.` };
+  };
+
   const updateApprovalPolicy = (threshold: number) => {
     setApprovalPolicy((prev) => ({
       ...prev,
@@ -1679,6 +1756,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         rejectTransaction,
         reverseTransaction,
         addSavingsContribution,
+        addSavingsGoal,
+        addDebt,
+        addBill,
         payBill,
         updateApprovalPolicy,
         markNotificationRead,
