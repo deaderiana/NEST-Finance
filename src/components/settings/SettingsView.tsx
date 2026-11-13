@@ -56,7 +56,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
     approvalPolicy.threshold_amount.toLocaleString('id-ID')
   );
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Sync input value whenever approvalPolicy updates in context
+  useEffect(() => {
+    if (approvalPolicy && approvalPolicy.threshold_amount !== undefined) {
+      setThresholdInput(approvalPolicy.threshold_amount.toLocaleString('id-ID'));
+    }
+  }, [approvalPolicy?.threshold_amount]);
 
   // Partner member lookup
   const partnerMember = members.find((m) => m.role === 'PARTNER');
@@ -121,11 +129,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
 
   const handleSavePolicy = (e: React.FormEvent) => {
     e.preventDefault();
-    const num = parseInt(thresholdInput.replace(/[^0-9]/g, ''), 10);
-    if (num > 0) {
-      updateApprovalPolicy(num);
+    const cleanNumStr = thresholdInput.replace(/[^0-9]/g, '');
+    const num = parseInt(cleanNumStr, 10);
+    if (!isNaN(num) && num >= 0) {
+      const res = updateApprovalPolicy(num);
+      setSaveMessage(res.message);
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setSaveMessage(null);
+      }, 4000);
+    } else {
+      setSaveMessage('Nominal ambang batas tidak valid.');
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSaveSuccess(false);
+        setSaveMessage(null);
+      }, 4000);
     }
   };
 
@@ -602,19 +622,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenRegisterModal 
 
           <div className="flex items-center justify-between pt-1">
             {saveSuccess ? (
-              <span className="text-xs text-emerald-600 font-semibold flex items-center space-x-1">
-                <Check className="w-4 h-4" />
-                <span>Kebijakan berhasil diperbarui!</span>
+              <span className="text-xs text-emerald-600 font-bold flex items-center space-x-1 animate-in fade-in">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{saveMessage || 'Kebijakan berhasil diperbarui!'}</span>
               </span>
             ) : (
-              <span className="text-[11px] text-slate-400">
-                Nilai saat ini: {formatIDR(approvalPolicy.threshold_amount)}
+              <span className="text-[11px] text-slate-500 font-medium">
+                Nilai saat ini: <strong className="text-slate-800">{formatIDR(approvalPolicy.threshold_amount)}</strong>
               </span>
             )}
 
             <button
               type="submit"
-              className="clay-button clay-button-primary px-4 py-1.5 text-xs font-bold"
+              className="clay-button clay-button-primary px-4 py-1.5 text-xs font-bold shadow-clay-sm hover:scale-105 active:scale-95 transition-all"
             >
               Simpan Perubahan
             </button>

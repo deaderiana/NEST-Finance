@@ -74,7 +74,7 @@ interface FinanceContextType {
   addDebt: (debt: { name: string; creditor: string; initial_principal: number; remaining_principal?: number; interest_rate_pct: number; monthly_installment: number; due_date_day: number }) => { success: boolean; message: string };
   addBill: (bill: { title: string; amount: number; due_date: string; recurring_period?: 'MONTHLY' | 'YEARLY' }) => { success: boolean; message: string };
   payBill: (billId: string, accountId: string) => { success: boolean; message: string };
-  updateApprovalPolicy: (threshold: number) => void;
+  updateApprovalPolicy: (threshold: number) => { success: boolean; message: string };
   markNotificationRead: (notifId: string) => void;
   resetAllData: () => void;
 
@@ -422,6 +422,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const cloud = resJson.data;
 
+      // Check timestamp: don't let older cloud data overwrite newer local changes!
+      const cloudUpdatedAt = cloud.updatedAt ? new Date(cloud.updatedAt).getTime() : 0;
+      let localUpdatedAt = 0;
+      if (typeof window !== 'undefined') {
+        try {
+          const rawLocal = localStorage.getItem(STORAGE_KEY);
+          if (rawLocal) {
+            const parsedLocal = JSON.parse(rawLocal);
+            if (parsedLocal.updatedAt) {
+              localUpdatedAt = new Date(parsedLocal.updatedAt).getTime();
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (localUpdatedAt > cloudUpdatedAt && !force) {
+        console.log('[CloudSync] Local device has newer changes than cloud. Pushing local to cloud...');
+        isSyncingRef.current = false;
+        return await syncToCloud();
+      }
+
       // Check if local device already has items while cloud is empty
       const localHasItems =
         (debts && debts.length > 0) ||
@@ -648,7 +669,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     accList: Account[],
     txList: Transaction[],
     jrnList: LedgerJournal[],
-    pwd?: string
+    pwd?: string,
+    overridePolicy?: ApprovalPolicy
   ) => {
     if (typeof window === 'undefined') return;
     try {
@@ -1930,11 +1952,77 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return { success: true, message: `Tagihan rutin "${data.title}" berhasil ditambahkan.` };
   };
 
-  const updateApprovalPolicy = (threshold: number) => {
-    setApprovalPolicy((prev) => ({
-      ...prev,
+  const updateApprovalPolicy = (threshold: number): { success: boolean; message: string } => {
+    if (isNaN(threshold) || threshold < 0) {
+      return { success: false, message: 'Nominal ambang batas tidak valid' };
+    }
+
+    const updatedPolicy: ApprovalPolicy = {
+      ...approvalPolicy,
       threshold_amount: threshold,
-    }));
+    };
+
+    setApprovalPolicy(updatedPolicy);
+
+    const nowIso = new Date().toISOString();
+
+    const notif: NotificationItem = {
+      id: `notif-policy-${Date.now()}`,
+      household_id: household.id,
+      type: 'SYSTEM',
+      title: '🛡️ Kebijakan Persetujuan Diperbarui',
+      message: `Batas nominal persetujuan transaksi (Maker-Checker) diubah menjadi Rp ${threshold.toLocaleString('id-ID')}.`,
+      created_at: nowIso,
+      read: false,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+
+    // Save to local storage immediately
+    try {
+      const stateToSave = {
+        users,
+        household,
+        members,
+        invitations,
+        accounts,
+        categories,
+        transactions,
+        journals,
+        budgets,
+        goals,
+        debts,
+        bills,
+        notifications: [notif, ...notifications],
+        approvalPolicy: updatedPolicy,
+        currentUserId: currentUser?.id,
+        appPassword,
+        updatedAt: nowIso,
+      };
+      const serialized = JSON.stringify(stateToSave);
+      localStorage.setItem(STORAGE_KEY, serialized);
+      lastSavedHashRef.current = serialized;
+
+      saveStateToRegistry(
+        household,
+        users,
+        members,
+        accounts,
+        transactions,
+        journals,
+        appPassword,
+        updatedPolicy
+      );
+
+      // Instant push to Cloud Storage so phone & other devices sync immediately
+      syncToCloud(stateToSave);
+    } catch (e) {
+      console.error('Failed to save updated approval policy:', e);
+    }
+
+    return {
+      success: true,
+      message: `Ambang batas persetujuan berhasil diubah menjadi Rp ${threshold.toLocaleString('id-ID')}!`,
+    };
   };
 
   const markNotificationRead = (notifId: string) => {
