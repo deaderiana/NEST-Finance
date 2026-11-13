@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useFinance } from '@/context/FinanceContext';
 import {
+  CheckCircle2,
   Eye,
   EyeOff,
   KeyRound,
@@ -10,10 +11,15 @@ import {
   Shield,
   Sparkles,
   Unlock,
+  UserPlus,
   Users,
 } from 'lucide-react';
 
-export const LockScreen: React.FC = () => {
+interface LockScreenProps {
+  onOpenSignUp?: () => void;
+}
+
+export const LockScreen: React.FC<LockScreenProps> = ({ onOpenSignUp }) => {
   const {
     household,
     currentUser,
@@ -173,8 +179,22 @@ export const LockScreen: React.FC = () => {
           </button>
         </form>
 
+        {/* Action: Sign Up / Register New Real Household */}
+        {onOpenSignUp && (
+          <div className="mt-4 pt-3 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={onOpenSignUp}
+              className="w-full py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition flex items-center justify-center space-x-1.5"
+            >
+              <UserPlus className="w-4 h-4 text-emerald-600" />
+              <span>Daftar / Buat Akun Baru (Sign Up)</span>
+            </button>
+          </div>
+        )}
+
         {/* Security badge note */}
-        <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-[11px] text-slate-400">
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center space-x-1.5 text-[11px] text-slate-400">
           <Shield className="w-3.5 h-3.5 text-emerald-600" />
           <span>Dilindungi Enkripsi &amp; Maker-Checker Keuangan</span>
         </div>

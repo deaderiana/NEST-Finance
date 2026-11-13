@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useFinance } from '@/context/FinanceContext';
 import { AccountScope, AccountType, InitialAccountInput } from '@/types/finance';
 import {
+  AlertCircle,
   Banknote,
   Building2,
   CheckCircle2,
@@ -42,7 +43,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
   const [partnerEmail, setPartnerEmail] = useState('');
 
   const [wipeDemoData, setWipeDemoData] = useState(true);
+
+  // Security password & confirmation
   const [securityPassword, setSecurityPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Accounts state
@@ -117,6 +121,18 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
       return;
     }
 
+    // Password validation: if filled, check length and confirmation
+    if (securityPassword.trim()) {
+      if (securityPassword.trim().length < 4) {
+        setStatusMessage({ type: 'error', text: 'Password / PIN minimal terdiri dari 4 digit/karakter' });
+        return;
+      }
+      if (securityPassword.trim() !== confirmPassword.trim()) {
+        setStatusMessage({ type: 'error', text: 'Konfirmasi password tidak cocok. Pastikan kedua kolom password sama.' });
+        return;
+      }
+    }
+
     const partnerRel = primaryRelationship === 'Suami' ? 'Istri' : 'Suami';
 
     const res = registerHousehold({
@@ -163,10 +179,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
             </div>
             <div>
               <h3 className="font-bold text-base sm:text-lg text-slate-800 leading-tight">
-                Pendaftaran Akun &amp; Rumah Tangga Baru
+                Pendaftaran Akun Baru (Sign Up)
               </h3>
               <p className="text-xs text-slate-500">
-                Mulai gunakan data riil keluarga Anda dengan pembukuan ganda terpercaya
+                Atur identitas keluarga, rekening riil, dan password keamanan Anda
               </p>
             </div>
           </div>
@@ -191,7 +207,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
                   : 'bg-rose-100 text-rose-800 border border-rose-300'
               }`}
             >
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              {statusMessage.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
               <span>{statusMessage.text}</span>
             </div>
           )}
@@ -427,36 +447,70 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
               </div>
             </div>
 
-            {/* SECTION 4: PASSWORD / PIN KEAMANAN (OPSIONAL) */}
-            <div className="clay-card-flat p-4 bg-white/95 space-y-3">
+            {/* SECTION 4: PASSWORD / PIN KEAMANAN */}
+            <div className="clay-card-flat p-4 bg-white/95 space-y-3 border-2 border-indigo-100">
               <div className="flex items-center space-x-2 pb-1 border-b border-slate-100">
-                <Lock className="w-4 h-4 text-amber-500" />
+                <Lock className="w-4 h-4 text-indigo-600" />
                 <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
-                  4. Password / PIN Keamanan Aplikasi (Opsional)
+                  4. Password / PIN Keamanan Aplikasi
                 </h4>
               </div>
 
               <p className="text-xs text-slate-500 leading-relaxed">
-                Lindungi akses pembukuan keuangan keluarga Anda. Jika diatur, aplikasi akan meminta PIN/Password ini setiap kali dibuka di perangkat.
+                Tetapkan password pembuka aplikasi. Agar lebih pasti dan tidak salah ketik, masukkan password pada kedua kolom di bawah ini (minimal 4 karakter atau angka).
               </p>
 
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Masukkan minimal 4 angka atau karakter (misal: 123456)..."
-                  value={securityPassword}
-                  onChange={(e) => setSecurityPassword(e.target.value)}
-                  className="w-full pl-9 pr-10 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white"
-                />
-                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-1.5"
-                  title={showPassword ? 'Sembunyikan' : 'Tampilkan'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    Password / PIN Baru
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Minimal 4 karakter..."
+                      value={securityPassword}
+                      onChange={(e) => setSecurityPassword(e.target.value)}
+                      className="w-full pl-9 pr-10 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white"
+                    />
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-1.5"
+                      title={showPassword ? 'Sembunyikan' : 'Tampilkan'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    Konfirmasi Password / PIN
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Ketik ulang password..."
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className={`w-full pl-9 pr-10 py-2 rounded-xl clay-inset text-xs font-semibold text-slate-800 bg-white transition ${
+                        confirmPassword && confirmPassword !== securityPassword
+                          ? 'border-2 border-rose-500'
+                          : confirmPassword && confirmPassword === securityPassword
+                          ? 'border-2 border-emerald-500'
+                          : ''
+                      }`}
+                    />
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    {confirmPassword && confirmPassword === securityPassword && (
+                      <span className="absolute right-3 top-2.5 text-emerald-600 text-xs font-bold flex items-center">
+                        ✓ Cocok
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -484,9 +538,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
             <div className="pt-2 pb-3">
               <button
                 type="submit"
-                className="w-full clay-button clay-button-primary py-3 text-sm font-bold shadow-clay-primary"
+                className="w-full clay-button clay-button-primary py-3 text-sm font-bold shadow-clay-primary flex items-center justify-center space-x-2"
               >
-                Simpan &amp; Aktifkan Data Riil Keluarga
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Simpan &amp; Aktifkan Akun Riil Sekarang</span>
               </button>
             </div>
           </form>

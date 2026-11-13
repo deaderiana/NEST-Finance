@@ -15,7 +15,7 @@ import { GoalsView } from '@/components/goals/GoalsView';
 import { ReportsView } from '@/components/reports/ReportsView';
 import { SettingsView } from '@/components/settings/SettingsView';
 import { LockScreen } from '@/components/auth/LockScreen';
-import { CheckCircle2, X } from 'lucide-react';
+import { CheckCircle2, KeyRound, Lock, Sparkles, UserPlus, X } from 'lucide-react';
 
 export default function Home() {
   const {
@@ -24,15 +24,28 @@ export default function Home() {
     dismissWelcomeNotice,
     isPasswordSet,
     isLocked,
+    household,
   } = useFinance();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
-  // If password lock is active and app is locked, render security LockScreen
+  // If password lock is active and app is locked, render security LockScreen with Sign Up access
   if (isPasswordSet && isLocked) {
-    return <LockScreen />;
+    return (
+      <>
+        <LockScreen onOpenSignUp={() => setIsRegisterModalOpen(true)} />
+        {/* Modal SignUp can be opened from LockScreen */}
+        <RegisterModal
+          isOpen={isRegisterModalOpen}
+          onClose={() => setIsRegisterModalOpen(false)}
+        />
+      </>
+    );
   }
+
+  // Check if current data is default demo data
+  const isDemoAccount = household.id === 'hh-pratama-rahma';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#EBF1F6] text-slate-800 pb-24 w-full max-w-full overflow-x-hidden">
@@ -68,6 +81,47 @@ export default function Home() {
             >
               <X className="w-5 h-5" />
             </button>
+          </div>
+        )}
+
+        {/* PROMINENT LANDING SIGNUP / SETUP PASSWORD CALL-TO-ACTION (DASHBOARD ONLY) */}
+        {activeTab === 'dashboard' && (
+          <div className="clay-card p-4 sm:p-5 bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-600 text-white shadow-clay-lg relative overflow-hidden mb-4 sm:mb-6 animate-in fade-in">
+            {/* Background glowing orbs */}
+            <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-teal-400/20 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-sm">
+                  <Sparkles className="w-3 h-3 text-amber-300" />
+                  <span>{isDemoAccount ? 'Mulai Pembukuan Riil' : 'Keamanan & Akun'}</span>
+                </div>
+                <h2 className="text-base sm:text-lg font-black tracking-tight text-white">
+                  {isDemoAccount
+                    ? 'Daftar Akun Keluarga Riil & Atur Password Anda'
+                    : `Pembukuan ${household.name} Aktif`}
+                </h2>
+                <p className="text-xs sm:text-sm text-indigo-100 max-w-xl leading-relaxed">
+                  {isDemoAccount
+                    ? 'Buat akun Anda dan pasangan, daftarkan rekening bank / dompet riil, dan tetapkan password keamanan agar pembukuan tidak terbuka sembarangan.'
+                    : isPasswordSet
+                    ? 'Aplikasi Anda sudah dilindungi Password/PIN keamanan dan aturan Maker-Checker.'
+                    : 'Aplikasi belum memiliki password pembuka. Atur password keamanan sekarang agar catatan keuangan terlindungi.'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsRegisterModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-white text-indigo-800 hover:bg-indigo-50 font-extrabold text-xs shadow-md transition flex items-center gap-2 hover:scale-105 active:scale-95"
+                >
+                  <UserPlus className="w-4 h-4 text-emerald-600" />
+                  <span>{isDemoAccount ? 'Buat Akun / Sign Up' : 'Daftar Ulang / Ganti Data'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -125,7 +179,7 @@ export default function Home() {
         onClose={() => setIsAddModalOpen(false)}
       />
 
-      {/* Registration & Real Household Onboarding Modal */}
+      {/* Registration & Real Household Onboarding Modal with Password */}
       <RegisterModal
         isOpen={isRegisterModalOpen}
         onClose={() => setIsRegisterModalOpen(false)}
