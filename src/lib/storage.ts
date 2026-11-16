@@ -160,12 +160,11 @@ export const INITIAL_ACCOUNTS: Account[] = [
   },
 ];
 
-export const INITIAL_CATEGORIES: Category[] = [
-  // Income
+export const NEW_INCOME_CATEGORIES: Category[] = [
   {
-    id: 'cat-inc-salary-suami',
+    id: 'cat-inc-salary',
     household_id: 'hh-pratama-rahma',
-    name: 'Gaji Budi (Suami)',
+    name: 'Gaji',
     category_type: 'INCOME',
     icon: 'Briefcase',
     color: '#10B981',
@@ -173,11 +172,11 @@ export const INITIAL_CATEGORIES: Category[] = [
     is_active: true,
   },
   {
-    id: 'cat-inc-salary-istri',
+    id: 'cat-inc-sidejob',
     household_id: 'hh-pratama-rahma',
-    name: 'Gaji Siti (Istri)',
+    name: 'Side Job',
     category_type: 'INCOME',
-    icon: 'GraduationCap',
+    icon: 'Laptop',
     color: '#059669',
     is_system: true,
     is_active: true,
@@ -185,7 +184,7 @@ export const INITIAL_CATEGORIES: Category[] = [
   {
     id: 'cat-inc-bonus',
     household_id: 'hh-pratama-rahma',
-    name: 'Bonus & THR',
+    name: 'Bonus',
     category_type: 'INCOME',
     icon: 'Gift',
     color: '#34D399',
@@ -193,15 +192,33 @@ export const INITIAL_CATEGORIES: Category[] = [
     is_active: true,
   },
   {
-    id: 'cat-inc-invest',
+    id: 'cat-inc-thr',
     household_id: 'hh-pratama-rahma',
-    name: 'Hasil Investasi & Dividen',
+    name: 'THR',
     category_type: 'INCOME',
-    icon: 'TrendingUp',
-    color: '#6EE7B7',
+    icon: 'Sparkles',
+    color: '#F59E0B',
     is_system: true,
     is_active: true,
   },
+];
+
+export function ensureStandardIncomeCategories(existingCats: Category[]): Category[] {
+  if (!existingCats || !Array.isArray(existingCats) || existingCats.length === 0) {
+    return INITIAL_CATEGORIES;
+  }
+  const expenseCats = existingCats.filter((c) => c.category_type === 'EXPENSE');
+  const finalExpenses =
+    expenseCats.length > 0
+      ? expenseCats
+      : INITIAL_CATEGORIES.filter((c) => c.category_type === 'EXPENSE');
+
+  return [...NEW_INCOME_CATEGORIES, ...finalExpenses];
+}
+
+export const INITIAL_CATEGORIES: Category[] = [
+  // Income
+  ...NEW_INCOME_CATEGORIES,
 
   // Expense
   {
@@ -293,7 +310,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     currency: 'IDR',
     transaction_date: '2026-11-01',
     account_id: 'acc-bca-shared',
-    category_id: 'cat-inc-salary-suami',
+    category_id: 'cat-inc-salary',
     description: 'Gaji Bulanan Budi (PT Mahakarya Prima)',
     merchant: 'PT Mahakarya Prima',
     created_by: 'user-budi',
@@ -310,7 +327,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     currency: 'IDR',
     transaction_date: '2026-11-02',
     account_id: 'acc-mandiri-shared',
-    category_id: 'cat-inc-salary-istri',
+    category_id: 'cat-inc-salary',
     description: 'Gaji Bulanan Siti (Aruna Studio)',
     merchant: 'Aruna Studio',
     created_by: 'user-siti',

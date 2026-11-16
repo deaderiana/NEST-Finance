@@ -27,6 +27,7 @@ import {
   INITIAL_BILLS,
   INITIAL_BUDGETS,
   INITIAL_CATEGORIES,
+  ensureStandardIncomeCategories,
   INITIAL_DEBTS,
   INITIAL_HOUSEHOLD,
   INITIAL_LEDGER_JOURNALS,
@@ -191,7 +192,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
               setUsers(pkg.users);
               setMembers(updatedMembers);
               if (pkg.accounts) setAccounts(pkg.accounts);
-              if (pkg.categories) setCategories(pkg.categories);
+              if (pkg.categories) setCategories(ensureStandardIncomeCategories(pkg.categories));
               if (pkg.transactions) setTransactions(pkg.transactions);
               if (pkg.journals) setJournals(pkg.journals);
               if (pkg.budgets) setBudgets(pkg.budgets);
@@ -230,7 +231,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 members: updatedMembers,
                 invitations: pkg.invitations || [],
                 accounts: pkg.accounts || [],
-                categories: pkg.categories || INITIAL_CATEGORIES,
+                categories: ensureStandardIncomeCategories(pkg.categories || INITIAL_CATEGORIES),
                 transactions: pkg.transactions || [],
                 journals: pkg.journals || [],
                 budgets: pkg.budgets || INITIAL_BUDGETS,
@@ -266,7 +267,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (parsed.members) setMembers(parsed.members);
         if (parsed.invitations) setInvitations(parsed.invitations);
         if (parsed.accounts) setAccounts(parsed.accounts);
-        if (parsed.categories) setCategories(parsed.categories);
+        if (parsed.categories) setCategories(ensureStandardIncomeCategories(parsed.categories));
         if (parsed.transactions) setTransactions(parsed.transactions);
         if (parsed.journals) setJournals(parsed.journals);
         if (parsed.budgets) setBudgets(parsed.budgets);
@@ -469,7 +470,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (cloud.members) setMembers(cloud.members);
       if (cloud.invitations) setInvitations(cloud.invitations);
       if (cloud.accounts) setAccounts(cloud.accounts);
-      if (cloud.categories) setCategories(cloud.categories);
+      if (cloud.categories) setCategories(ensureStandardIncomeCategories(cloud.categories));
       if (cloud.transactions) setTransactions(cloud.transactions);
       if (cloud.journals) setJournals(cloud.journals);
       if (cloud.budgets) setBudgets(cloud.budgets);
@@ -508,7 +509,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           members: cloud.members || members,
           invitations: cloud.invitations || invitations,
           accounts: cloud.accounts || accounts,
-          categories: cloud.categories || categories,
+          categories: ensureStandardIncomeCategories(cloud.categories || categories),
           transactions: cloud.transactions || transactions,
           journals: cloud.journals || journals,
           budgets: cloud.budgets || budgets,
@@ -817,7 +818,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (st.household) setHousehold(st.household);
             if (st.members) setMembers(st.members);
             if (st.accounts) setAccounts(st.accounts);
-            if (st.categories) setCategories(st.categories);
+            if (st.categories) setCategories(ensureStandardIncomeCategories(st.categories));
             if (st.transactions) setTransactions(st.transactions);
             if (st.journals) setJournals(st.journals);
             if (st.budgets) setBudgets(st.budgets);
@@ -1134,7 +1135,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setUsers(pkg.users);
       if (pkg.members) setMembers(pkg.members);
       if (pkg.accounts) setAccounts(pkg.accounts);
-      if (pkg.categories) setCategories(pkg.categories);
+      if (pkg.categories) setCategories(ensureStandardIncomeCategories(pkg.categories));
       if (pkg.transactions) setTransactions(pkg.transactions);
       if (pkg.journals) setJournals(pkg.journals);
       if (pkg.budgets) setBudgets(pkg.budgets);
