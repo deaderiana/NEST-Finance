@@ -17,14 +17,14 @@ import {
 export const USERS: UserProfile[] = [
   {
     id: 'user-budi',
-    display_name: 'Budi Pratama',
+    display_name: 'Suami',
     role: 'OWNER',
     relationship: 'Suami',
     locale: 'id-ID',
   },
   {
     id: 'user-siti',
-    display_name: 'Siti Rahma',
+    display_name: 'Istri',
     role: 'PARTNER',
     relationship: 'Istri',
     locale: 'id-ID',
@@ -33,7 +33,7 @@ export const USERS: UserProfile[] = [
 
 export const INITIAL_HOUSEHOLD: Household = {
   id: 'hh-pratama-rahma',
-  name: 'Keluarga Budi & Siti',
+  name: 'Keluarga Suami & Istri',
   owner_user_id: 'user-budi',
   currency: 'IDR',
   timezone: 'Asia/Jakarta',
@@ -107,7 +107,7 @@ export const INITIAL_ACCOUNTS: Account[] = [
   {
     id: 'acc-budi-bca',
     household_id: 'hh-pratama-rahma',
-    name: 'BCA Pribadi (Budi)',
+    name: 'BCA Pribadi (Suami)',
     account_type: 'BANK',
     scope: 'PERSONAL',
     owner_user_id: 'user-budi',
@@ -121,7 +121,7 @@ export const INITIAL_ACCOUNTS: Account[] = [
   {
     id: 'acc-budi-gopay',
     household_id: 'hh-pratama-rahma',
-    name: 'GoPay Budi',
+    name: 'GoPay Suami',
     account_type: 'E_WALLET',
     scope: 'PERSONAL',
     owner_user_id: 'user-budi',
@@ -134,7 +134,7 @@ export const INITIAL_ACCOUNTS: Account[] = [
   {
     id: 'acc-siti-jago',
     household_id: 'hh-pratama-rahma',
-    name: 'Bank Jago (Siti)',
+    name: 'Bank Jago (Istri)',
     account_type: 'BANK',
     scope: 'PERSONAL',
     owner_user_id: 'user-siti',
@@ -148,7 +148,7 @@ export const INITIAL_ACCOUNTS: Account[] = [
   {
     id: 'acc-siti-ovo',
     household_id: 'hh-pratama-rahma',
-    name: 'OVO Siti',
+    name: 'OVO Istri',
     account_type: 'E_WALLET',
     scope: 'PERSONAL',
     owner_user_id: 'user-siti',
@@ -207,7 +207,18 @@ export function ensureStandardIncomeCategories(existingCats: Category[]): Catego
   if (!existingCats || !Array.isArray(existingCats) || existingCats.length === 0) {
     return INITIAL_CATEGORIES;
   }
-  const expenseCats = existingCats.filter((c) => c.category_type === 'EXPENSE');
+  const expenseCats = existingCats
+    .filter((c) => c.category_type === 'EXPENSE')
+    .map((c) => {
+      if (c.name === 'Pribadi Budi' || c.id === 'cat-exp-suami') {
+        return { ...c, name: 'Pribadi Suami' };
+      }
+      if (c.name === 'Pribadi Siti' || c.id === 'cat-exp-istri') {
+        return { ...c, name: 'Pribadi Istri' };
+      }
+      return c;
+    });
+
   const finalExpenses =
     expenseCats.length > 0
       ? expenseCats
@@ -274,7 +285,7 @@ export const INITIAL_CATEGORIES: Category[] = [
   {
     id: 'cat-exp-suami',
     household_id: 'hh-pratama-rahma',
-    name: 'Pribadi Budi',
+    name: 'Pribadi Suami',
     category_type: 'EXPENSE',
     icon: 'User',
     color: '#93C5FD',
@@ -284,7 +295,7 @@ export const INITIAL_CATEGORIES: Category[] = [
   {
     id: 'cat-exp-istri',
     household_id: 'hh-pratama-rahma',
-    name: 'Pribadi Siti',
+    name: 'Pribadi Istri',
     category_type: 'EXPENSE',
     icon: 'UserCheck',
     color: '#F472B6',
