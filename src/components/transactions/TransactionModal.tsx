@@ -70,6 +70,26 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     }
   }, [accounts, accountId]);
 
+  useEffect(() => {
+    if (categories.length > 0 && !categoryId) {
+      const match = categories.find((c) =>
+        txType === 'INCOME' ? c.category_type === 'INCOME' : c.category_type === 'EXPENSE'
+      );
+      if (match) setCategoryId(match.id);
+    }
+  }, [categories, categoryId, txType]);
+
+  const handleSelectTxType = (type: TransactionType | 'BILL') => {
+    setTxType(type);
+    if (type === 'INCOME') {
+      const incomeCat = categories.find((c) => c.category_type === 'INCOME');
+      if (incomeCat) setCategoryId(incomeCat.id);
+    } else if (type === 'EXPENSE') {
+      const expenseCat = categories.find((c) => c.category_type === 'EXPENSE');
+      if (expenseCat) setCategoryId(expenseCat.id);
+    }
+  };
+
   const handleFormatAmount = (val: string) => {
     const raw = val.replace(/[^0-9]/g, '');
     const num = parseInt(raw, 10) || 0;
@@ -183,15 +203,15 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       setStatusMessage({ type: 'error', text: 'Nominal transaksi harus lebih dari 0' });
       return;
     }
-    if (!description.trim()) {
-      setStatusMessage({ type: 'error', text: 'Keterangan transaksi wajib diisi' });
-      return;
-    }
+    const finalDesc =
+      description.trim() ||
+      categories.find((c) => c.id === categoryId)?.name ||
+      (txType === 'INCOME' ? 'Pemasukan' : 'Pengeluaran');
 
     const res = createTransaction({
       transaction_type: txType as TransactionType,
       amount: amountNum,
-      description: description.trim(),
+      description: finalDesc,
       account_id: accountId,
       destination_account_id: txType === 'TRANSFER' ? destinationAccountId : undefined,
       category_id: txType === 'TRANSFER' ? undefined : (categoryId || undefined),
@@ -587,7 +607,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
               <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                 <button
                   type="button"
-                  onClick={() => setTxType('EXPENSE')}
+                  onClick={() => handleSelectTxType('EXPENSE')}
                   className={`py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 ${
                     txType === 'EXPENSE'
                       ? 'clay-button-expense text-white'
@@ -600,7 +620,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
                 <button
                   type="button"
-                  onClick={() => setTxType('INCOME')}
+                  onClick={() => handleSelectTxType('INCOME')}
                   className={`py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 ${
                     txType === 'INCOME'
                       ? 'clay-button-income text-white'
@@ -613,7 +633,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
                 <button
                   type="button"
-                  onClick={() => setTxType('TRANSFER')}
+                  onClick={() => handleSelectTxType('TRANSFER')}
                   className={`py-2 px-2 sm:px-3 rounded-2xl text-[11px] sm:text-xs font-bold transition-all flex items-center justify-center space-x-1 ${
                     txType === 'TRANSFER'
                       ? 'bg-purple-600 text-white shadow-sm'
@@ -676,8 +696,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="Contoh: Belanja Bulanan Superindo"
+                  placeholder={
+                    txType === 'INCOME'
+                      ? 'Contoh: Gaji Bulanan / Side Job (Opsional)'
+                      : txType === 'TRANSFER'
+                      ? 'Contoh: Pindah Dana ke Rekening Bersama'
+                      : 'Contoh: Belanja Bulanan Superindo'
+                  }
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-3.5 py-2 rounded-xl clay-inset text-xs text-slate-800 bg-white"

@@ -299,6 +299,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (!isLoaded) return;
     try {
+      const nowIso = new Date().toISOString();
       const stateToSave = {
         users,
         household,
@@ -316,8 +317,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         approvalPolicy,
         currentUserId: currentUser.id,
         appPassword,
+        updatedAt: nowIso,
+        lastUpdatedBy: currentUser?.display_name || 'User',
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+
+      // Auto-push to Cloud (debounced) if this update came from local user interaction
+      if (!isApplyingCloudDataRef.current) {
+        if (autoSyncDebounceRef.current) {
+          clearTimeout(autoSyncDebounceRef.current);
+        }
+        autoSyncDebounceRef.current = setTimeout(() => {
+          syncToCloud(stateToSave);
+        }, 1200);
+      }
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
     }
@@ -425,14 +438,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Check timestamp: don't let older cloud data overwrite newer local changes!
       const cloudUpdatedAt = cloud.updatedAt ? new Date(cloud.updatedAt).getTime() : 0;
+      let localParsed: any = null;
       let localUpdatedAt = 0;
       if (typeof window !== 'undefined') {
         try {
           const rawLocal = localStorage.getItem(STORAGE_KEY);
           if (rawLocal) {
-            const parsedLocal = JSON.parse(rawLocal);
-            if (parsedLocal.updatedAt) {
-              localUpdatedAt = new Date(parsedLocal.updatedAt).getTime();
+            localParsed = JSON.parse(rawLocal);
+            if (localParsed.updatedAt) {
+              localUpdatedAt = new Date(localParsed.updatedAt).getTime();
             }
           }
         } catch (e) {}
@@ -441,15 +455,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (localUpdatedAt > cloudUpdatedAt && !force) {
         console.log('[CloudSync] Local device has newer changes than cloud. Pushing local to cloud...');
         isSyncingRef.current = false;
-        return await syncToCloud();
+        return await syncToCloud(localParsed);
       }
 
       // Check if local device already has items while cloud is empty
       const localHasItems =
-        (debts && debts.length > 0) ||
-        (bills && bills.length > 0) ||
-        (goals && goals.length > 0) ||
-        (transactions && transactions.length > 0);
+        localParsed &&
+        ((localParsed.debts && localParsed.debts.length > 0) ||
+          (localParsed.bills && localParsed.bills.length > 0) ||
+          (localParsed.goals && localParsed.goals.length > 0) ||
+          (localParsed.transactions && localParsed.transactions.length > 0));
       const cloudHasItems =
         (cloud.debts && cloud.debts.length > 0) ||
         (cloud.bills && cloud.bills.length > 0) ||
@@ -457,9 +472,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         (cloud.transactions && cloud.transactions.length > 0);
 
       if (localHasItems && !cloudHasItems && !force) {
-        console.log('[CloudSync] Local device has newer items than cloud. Pushing local to cloud...');
+        console.log('[CloudSync] Local device has items while cloud is empty. Pushing local to cloud...');
         isSyncingRef.current = false;
-        return await syncToCloud();
+        return await syncToCloud(localParsed);
       }
 
       // Apply cloud data to state
@@ -1538,7 +1553,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const txType = data.transaction_type || 'EXPENSE';
     const amount = Number(data.amount);
-    const requiresApproval = amount > approvalPolicy.threshold_amount;
+    // Maker-Checker approval ONLY applies to EXPENSE (pengeluaran) exceeding threshold
+    const requiresApproval = txType === 'EXPENSE' && amount > approvalPolicy.threshold_amount;
 
     const newTxId = `tx-${Date.now()}`;
     const newTx: Transaction = {
@@ -1564,10 +1580,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
 
     if (requiresApproval) {
-      setTransactions((prev) => [newTx, ...prev]);
+      const updatedTxList = [newTx, ...transactions];
+      setTransactions(updatedTxList);
 
       // Notify the partner (other user)
       const otherUser = users.find((u) => u.id !== currentUser.id);
+      let updatedNotifs = notifications;
       if (otherUser) {
         const notif: NotificationItem = {
           id: `notif-${Date.now()}`,
@@ -1580,8 +1598,35 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           created_at: new Date().toISOString(),
           read: false,
         };
-        setNotifications((prev) => [notif, ...prev]);
+        updatedNotifs = [notif, ...notifications];
+        setNotifications(updatedNotifs);
       }
+
+      const nowIso = new Date().toISOString();
+      const immediateState = {
+        users,
+        household,
+        members,
+        invitations,
+        accounts,
+        categories,
+        transactions: updatedTxList,
+        journals,
+        budgets,
+        goals,
+        debts,
+        bills,
+        notifications: updatedNotifs,
+        approvalPolicy,
+        currentUserId: currentUser.id,
+        appPassword,
+        updatedAt: nowIso,
+        lastUpdatedBy: currentUser?.display_name || 'User',
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(immediateState));
+        syncToCloud(immediateState);
+      } catch (e) {}
 
       return {
         success: true,
@@ -1607,24 +1652,55 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // Update balances
-    setAccounts((prev) =>
-      prev.map((acc) => {
-        if (acc.id === newTx.account_id) {
-          if (txType === 'EXPENSE' || txType === 'TRANSFER') {
-            return { ...acc, current_balance: acc.current_balance - amount };
-          } else if (txType === 'INCOME') {
-            return { ...acc, current_balance: acc.current_balance + amount };
-          }
-        }
-        if (txType === 'TRANSFER' && acc.id === newTx.destination_account_id) {
+    const updatedAccounts = accounts.map((acc) => {
+      if (acc.id === newTx.account_id) {
+        if (txType === 'EXPENSE' || txType === 'TRANSFER') {
+          return { ...acc, current_balance: acc.current_balance - amount };
+        } else if (txType === 'INCOME') {
           return { ...acc, current_balance: acc.current_balance + amount };
         }
-        return acc;
-      })
-    );
+      }
+      if (txType === 'TRANSFER' && acc.id === newTx.destination_account_id) {
+        return { ...acc, current_balance: acc.current_balance + amount };
+      }
+      return acc;
+    });
 
-    setJournals((prev) => [journal, ...prev]);
-    setTransactions((prev) => [newTx, ...prev]);
+    const updatedJournals = [journal, ...journals];
+    const updatedTxList = [newTx, ...transactions];
+
+    setAccounts(updatedAccounts);
+    setJournals(updatedJournals);
+    setTransactions(updatedTxList);
+
+    // Immediate persistence & Cloud Sync
+    const nowIso = new Date().toISOString();
+    const immediateState = {
+      users,
+      household,
+      members,
+      invitations,
+      accounts: updatedAccounts,
+      categories,
+      transactions: updatedTxList,
+      journals: updatedJournals,
+      budgets,
+      goals,
+      debts,
+      bills,
+      notifications,
+      approvalPolicy,
+      currentUserId: currentUser.id,
+      appPassword,
+      updatedAt: nowIso,
+      lastUpdatedBy: currentUser?.display_name || 'User',
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(immediateState));
+      syncToCloud(immediateState);
+    } catch (e) {
+      console.error('Immediate sync failed:', e);
+    }
 
     return {
       success: true,
