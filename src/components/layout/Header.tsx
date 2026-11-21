@@ -96,7 +96,7 @@ export const Header: React.FC<HeaderProps> = ({
             title={
               cloudSyncStatus === 'syncing'
                 ? 'Sedang menyinkronkan data dengan cloud...'
-                : `Cloud Aktif & Tersinkron ${lastCloudSyncTime ? `(${lastCloudSyncTime})` : ''}. Klik untuk tarik data terbaru.`
+                : cloudSyncStatus === 'error' ? 'Belum tersinkron. Data tersimpan di perangkat; klik untuk mencoba lagi. Jika baru diperbarui, muat ulang aplikasi.' : `Cloud Aktif & Tersinkron ${lastCloudSyncTime ? `(${lastCloudSyncTime})` : ''}. Klik untuk tarik data terbaru.`
             }
           >
             <RefreshCw
@@ -108,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-slate-500'
               }`}
             />
-            <span className="hidden sm:inline text-[11px]">
+            <span className="inline text-[11px]">
               {cloudSyncStatus === 'syncing'
                 ? 'Sinkron...'
                 : cloudSyncStatus === 'synced'

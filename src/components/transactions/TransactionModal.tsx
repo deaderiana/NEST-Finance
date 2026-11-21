@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFinance } from '@/context/FinanceContext';
 import { TransactionType } from '@/types/finance';
 import { formatIDR, formatDateID } from '@/lib/ledgerEngine';
@@ -38,6 +38,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     setActiveTab,
   } = useFinance();
 
+  const submittedRef = useRef(false);
+  const [submitted, setSubmitted] = useState(false);
+  useEffect(() => { if (isOpen) { submittedRef.current = false; setSubmitted(false); } }, [isOpen]);
   const [inputMode, setInputMode] = useState<'QUICK' | 'ADVANCED' | 'AI' | 'BILLS'>('QUICK');
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
@@ -65,7 +68,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   const [newBillPeriod, setNewBillPeriod] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
 
   useEffect(() => {
-    if (accounts.length > 0 && !accountId) {
+    if (accounts.length > 0 && !accounts.some(a => a.id === accountId && a.is_active)) {
       setAccountId(accounts[0].id);
     }
   }, [accounts, accountId]);
@@ -78,6 +81,12 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       if (match) setCategoryId(match.id);
     }
   }, [categories, categoryId, txType]);
+
+  useEffect(() => {
+    if (!accounts.some(a => a.id === destinationAccountId && a.id !== accountId && a.is_active)) {
+      setDestinationAccountId(accounts.find(a => a.id !== accountId && a.is_active)?.id || '');
+    }
+  }, [accounts, accountId, destinationAccountId]);
 
   const handleSelectTxType = (type: TransactionType | 'BILL') => {
     setTxType(type);
@@ -198,16 +207,18 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittedRef.current) return;
 
     if (amountNum <= 0) {
       setStatusMessage({ type: 'error', text: 'Nominal transaksi harus lebih dari 0' });
       return;
     }
     const finalDesc =
-      description.trim() ||
+      description.trim() || (txType === 'TRANSFER' ? `Pindah Dana: ${accounts.find(a => a.id === accountId)?.name || ''} ? ${accounts.find(a => a.id === destinationAccountId)?.name || ''}` : '') ||
       categories.find((c) => c.id === categoryId)?.name ||
       (txType === 'INCOME' ? 'Pemasukan' : 'Pengeluaran');
 
+    submittedRef.current = true;
     const res = createTransaction({
       transaction_type: txType as TransactionType,
       amount: amountNum,
@@ -222,6 +233,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     });
 
     if (res.success) {
+      setSubmitted(true);
       setStatusMessage({ type: 'success', text: res.message });
       setTimeout(() => {
         setAmountStr('');
@@ -235,6 +247,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
         onClose();
       }, 1200);
     } else {
+      submittedRef.current = false;
       setStatusMessage({ type: 'error', text: res.message });
     }
   };
@@ -709,18 +722,19 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                 />
               </div>
 
+              {txType === 'TRANSFER' && <p className="text-xs text-indigo-600">Bank ? Cash untuk tarik tunai; Cash ? Bank untuk setor tunai; Bank ? Bank untuk transfer. Saldo sumber berkurang dan tujuan bertambah, tanpa menambah pemasukan atau pengeluaran.</p>}
               {/* Accounts & Category */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                    {txType === 'TRANSFER' ? 'Rekening Sumber' : 'Rekening'}
+                    {txType === 'TRANSFER' ? 'Rekening / Cash Sumber' : 'Rekening / Cash'}
                   </label>
                   <select
                     value={accountId}
                     onChange={(e) => setAccountId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl clay-inset text-xs text-slate-800 bg-white"
                   >
-                    {accounts.map((a) => (
+                    {accounts.filter(a => a.is_active).map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name} ({a.scope === 'SHARED' ? 'Bersama' : 'Pribadi'})
                       </option>
@@ -731,7 +745,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                 {txType === 'TRANSFER' ? (
                   <div>
                     <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                      Rekening Tujuan
+                      Rekening / Cash Tujuan
                     </label>
                     <select
                       value={destinationAccountId}
@@ -875,9 +889,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
               <div className="pt-2 pb-3">
                 <button
                   type="submit"
+                  disabled={submitted}
                   className="w-full clay-button clay-button-primary py-2.5 text-sm font-bold shadow-clay-primary"
                 >
-                  {isOverThreshold ? 'Ajukan Transaksi (Minta Persetujuan)' : 'Simpan & Posting Transaksi'}
+                  {submitted ? 'Tersimpan' : isOverThreshold ? 'Ajukan Transaksi (Minta Persetujuan)' : 'Simpan & Posting Transaksi'}
                 </button>
               </div>
             </form>

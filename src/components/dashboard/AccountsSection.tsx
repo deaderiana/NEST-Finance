@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const AccountsSection: React.FC = () => {
-  const { accounts, users, hideBalance } = useFinance();
+  const { accounts, users, hideBalance, addNewAccount } = useFinance();
   const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'SHARED' | 'BUDI' | 'SITI'>('ALL');
 
   const getIcon = (type: string, iconName?: string) => {
@@ -38,8 +38,8 @@ export const AccountsSection: React.FC = () => {
   };
 
   const sharedAccounts = accounts.filter((a) => a.scope === 'SHARED');
-  const budiAccounts = accounts.filter((a) => a.owner_user_id === 'user-budi');
-  const sitiAccounts = accounts.filter((a) => a.owner_user_id === 'user-siti');
+  const budiAccounts = accounts.filter((a) => a.owner_user_id === users.find(u => u.relationship === 'Suami')?.id);
+  const sitiAccounts = accounts.filter((a) => a.owner_user_id === users.find(u => u.relationship === 'Istri')?.id);
 
   const filteredAccounts =
     selectedFilter === 'SHARED'
@@ -85,7 +85,7 @@ export const AccountsSection: React.FC = () => {
               selectedFilter === 'BUDI' ? 'clay-pill-active' : 'clay-pill-inactive'
             }`}
           >
-            Budi ({budiAccounts.length})
+            Suami ({budiAccounts.length})
           </button>
           <button
             onClick={() => setSelectedFilter('SITI')}
@@ -93,11 +93,17 @@ export const AccountsSection: React.FC = () => {
               selectedFilter === 'SITI' ? 'clay-pill-active' : 'clay-pill-inactive'
             }`}
           >
-            Siti ({sitiAccounts.length})
+            Istri ({sitiAccounts.length})
           </button>
         </div>
       </div>
 
+      {!accounts.some(a => a.account_type === 'CASH' && a.is_active) && (
+        <button className="clay-button px-4 py-2 text-sm text-emerald-700" onClick={() => addNewAccount({ name: 'Cash Bersama', account_type: 'CASH', scope: 'SHARED', opening_balance: 0 })}>
+          + Tambah Cash Bersama (saldo awal Rp 0)
+        </button>
+      )}
+      <p className="text-xs text-slate-500">Isi Cash dari rekening suami atau istri melalui tombol + ? Pindah Dana. Pilih rekening asal dan Cash sebagai tujuan. Transfer antar-rekening tersedia di menu yang sama.</p>
       {/* Account Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {filteredAccounts.map((acc) => {

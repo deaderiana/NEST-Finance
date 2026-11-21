@@ -1,5 +1,6 @@
 'use client';
 
+import { SyncOutbox, recoverLegacyPending } from '@/lib/syncJournal';
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import {
   Account,
@@ -152,6 +153,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isApplyingCloudDataRef = useRef(false);
   const hasSavedInitialStateRef = useRef(false);
   const pushQueueRef = useRef<Promise<any>>(Promise.resolve());
+  const outboxRef = useRef<SyncOutbox | null>(null);
   const latestPullRef = useRef<(force?: boolean) => Promise<any>>();
 
 
@@ -170,6 +172,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Load from invitation link (if present) OR local storage
   useEffect(() => {
+    outboxRef.current = new SyncOutbox(localStorage);
     // 1. Check if the user opened an invitation URL with sync package
     if (typeof window !== 'undefined') {
       try {
@@ -263,9 +266,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // 2. Otherwise load existing localStorage state
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const durable = outboxRef.current?.read();
+      const saved = durable?.operations.length ? JSON.stringify(durable.baseline) : localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved);
+        const queue = outboxRef.current?.read();
+        const parsed = queue?.operations.length ? queue.baseline : JSON.parse(saved);
+        outboxRef.current?.initialize({ ...parsed, categories: ensureStandardIncomeCategories(parsed.categories || INITIAL_CATEGORIES) });
         if (parsed.users && parsed.users.length > 0) setUsers(parsed.users);
         if (parsed.household) setHousehold(parsed.household);
         if (parsed.members) setMembers(parsed.members);
@@ -329,11 +335,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updatedAt: nowIso,
         lastUpdatedBy: currentUser?.display_name || 'User',
       };
+      outboxRef.current?.initialize(stateToSave);
+      if (!initialSave && !applyingCloud) outboxRef.current?.record(stateToSave);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
 
       // Auto-push to Cloud (debounced) if this update came from local user interaction
       if (!initialSave && !applyingCloud) {
-        localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(stateToSave));
         setCloudSyncStatus('syncing');
         if (autoSyncDebounceRef.current) {
           clearTimeout(autoSyncDebounceRef.current);
@@ -392,41 +399,36 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastUpdatedBy: currentUser?.display_name || 'User',
       };
 
-      localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(payload));
-      const send = async (): Promise<{ success: boolean; message: string }> => {
       try {
-      const latestPending = localStorage.getItem(PENDING_SYNC_KEY);
-      if (latestPending && latestPending !== JSON.stringify(payload)) {
-        return { success: false, message: 'Versi lebih baru sudah masuk antrean sinkronisasi.' };
-      }
-      setCloudSyncStatus('syncing');
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const json = await res.json();
-      if (res.ok && json.success) {
-        if (localStorage.getItem(PENDING_SYNC_KEY) === JSON.stringify(payload)) {
-          localStorage.removeItem(PENDING_SYNC_KEY);
-        }
-        setCloudSyncStatus(localStorage.getItem(PENDING_SYNC_KEY) ? 'syncing' : 'synced');
-        setLastCloudSyncTime(new Date().toLocaleTimeString('id-ID'));
-        return { success: true, message: 'Data berhasil disinkronkan ke cloud!' };
-      } else {
+        outboxRef.current?.record(payload);
+      } catch (e: any) {
         setCloudSyncStatus('error');
-        return { success: false, message: json.message || 'Gagal sinkronisasi' };
+        return { success: false, message: e.message || 'Penyimpanan perangkat gagal.' };
       }
-    } catch (err: any) {
-      console.error('[CloudSync] Error in syncToCloud:', err);
-      setCloudSyncStatus('error');
-      return { success: false, message: err?.message || 'Gagal terhubung ke cloud' };
-    }
+      const send = async (): Promise<{ success: boolean; message: string }> => {
+        try {
+          setCloudSyncStatus('syncing');
+          while (outboxRef.current?.read()?.operations.length) {
+            const operation = outboxRef.current.read()!.operations[0];
+            const res = await fetch('/api/sync', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ protocol: 3, operation }),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success || json.operationId !== operation.id) throw new Error(json.message || 'Belum tersimpan di cloud.');
+            outboxRef.current.ack(operation.id);
+          }
+          setCloudSyncStatus('synced');
+          setLastCloudSyncTime(new Date().toLocaleTimeString('id-ID'));
+          return { success: true, message: 'Perubahan tersimpan di cloud.' };
+        } catch (e: any) {
+          setCloudSyncStatus('error');
+          return { success: false, message: e.message || 'Belum tersinkron; data tetap tersimpan di perangkat.' };
+        }
       };
-    const queued = pushQueueRef.current.then(send, send);
-    pushQueueRef.current = queued;
-    return queued;
+      const queued = pushQueueRef.current.then(send, send);
+      pushQueueRef.current = queued;
+      return queued;
   };
 
   /**
@@ -440,9 +442,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       isSyncingRef.current = true;
       setCloudSyncStatus('syncing');
 
-      const pending = localStorage.getItem(PENDING_SYNC_KEY);
-      if (pending) {
-        const result = await syncToCloud(JSON.parse(pending));
+      const pending = outboxRef.current?.read();
+      if (pending?.operations.length) {
+        const result = await syncToCloud(pending.baseline);
         if (!result.success) return result;
       }
       const beforeRead = localStorage.getItem(STORAGE_KEY);
@@ -464,16 +466,25 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return { success: false, message: 'Belum ada data di cloud' };
       }
 
-      const cloud = resJson.data;
+      let cloud = resJson.data;
 
       // Do not replace edits made while the read was in flight.
-      if (localStorage.getItem(PENDING_SYNC_KEY) || localStorage.getItem(STORAGE_KEY) !== beforeRead) {
+      if (outboxRef.current?.read()?.operations.length || localStorage.getItem(STORAGE_KEY) !== beforeRead) {
         return { success: false, message: 'Perubahan lokal sedang dikirim; data cloud akan diperiksa kembali.' };
       }
       const local = JSON.parse(beforeRead || '{}');
       if (local.household?.id && cloud.household?.id !== local.household.id) {
         setCloudSyncStatus('error');
         return { success: false, message: 'Pembukuan cloud berbeda dari keluarga pada perangkat ini.' };
+      }
+      const legacyPending = localStorage.getItem(PENDING_SYNC_KEY);
+      if (legacyPending) {
+        const recovered = recoverLegacyPending(cloud, JSON.parse(legacyPending));
+        outboxRef.current?.accept(cloud);
+        const uploaded = await syncToCloud(recovered);
+        if (!uploaded.success) return uploaded;
+        localStorage.removeItem(PENDING_SYNC_KEY);
+        cloud = recovered;
       }
       if (autoSyncDebounceRef.current) clearTimeout(autoSyncDebounceRef.current);
 
@@ -539,9 +550,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           updatedAt: cloud.updatedAt,
           appPassword: cloud.appPassword || '',
         };
+        outboxRef.current?.accept(stateToSave);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
       } catch (e) {
-        console.error('[CloudSync] Failed to cache cloud data to localStorage:', e);
+        throw e;
       }
 
 
@@ -1407,7 +1419,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return { success: false, message: 'Nama rekening wajib diisi' };
     }
 
-    const newAccId = `acc-${Date.now()}`;
+    const newAccId = `acc-${crypto.randomUUID()}`;
     const newAcc: Account = {
       id: newAccId,
       household_id: household.id,
@@ -1561,10 +1573,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const txType = data.transaction_type || 'EXPENSE';
     const amount = Number(data.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return { success: false, message: 'Nominal tidak valid.' };
+    const source = accounts.find(a => a.id === data.account_id && a.is_active);
+    if (!source) return { success: false, message: 'Pilih rekening atau Cash yang aktif.' };
+    if (txType === 'TRANSFER') {
+      const target = accounts.find(a => a.id === data.destination_account_id && a.is_active);
+      if (!target || target.id === source.id) return { success: false, message: 'Sumber dan tujuan harus berbeda dan aktif.' };
+      if (source.current_balance < amount) return { success: false, message: 'Saldo sumber tidak cukup untuk pindah dana.' };
+    }
     // Maker-Checker approval ONLY applies to EXPENSE (pengeluaran) exceeding threshold
     const requiresApproval = txType === 'EXPENSE' && amount > approvalPolicy.threshold_amount;
 
-    const newTxId = `tx-${Date.now()}`;
+    const newTxId = `tx-${crypto.randomUUID()}`;
     const newTx: Transaction = {
       id: newTxId,
       household_id: household.id,
@@ -1589,7 +1609,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (requiresApproval) {
       const updatedTxList = [newTx, ...transactions];
-      setTransactions(updatedTxList);
 
       // Notify the partner (other user)
       const otherUser = users.find((u) => u.id !== currentUser.id);
@@ -1607,7 +1626,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           read: false,
         };
         updatedNotifs = [notif, ...notifications];
-        setNotifications(updatedNotifs);
       }
 
       const nowIso = new Date().toISOString();
@@ -1632,9 +1650,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastUpdatedBy: currentUser?.display_name || 'User',
       };
       try {
+        outboxRef.current?.record(immediateState);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(immediateState));
         syncToCloud(immediateState);
-      } catch (e) {}
+      } catch (e) { return { success: false, message: 'Penyimpanan perangkat gagal. Transaksi belum dicatat.' }; }
+      setTransactions(updatedTxList);
+      setNotifications(updatedNotifs);
 
       return {
         success: true,
@@ -1677,10 +1698,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const updatedJournals = [journal, ...journals];
     const updatedTxList = [newTx, ...transactions];
 
-    setAccounts(updatedAccounts);
-    setJournals(updatedJournals);
-    setTransactions(updatedTxList);
-
     // Immediate persistence & Cloud Sync
     const nowIso = new Date().toISOString();
     const immediateState = {
@@ -1704,15 +1721,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       lastUpdatedBy: currentUser?.display_name || 'User',
     };
     try {
+      outboxRef.current?.record(immediateState);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(immediateState));
       syncToCloud(immediateState);
     } catch (e) {
-      console.error('Immediate sync failed:', e);
+      return { success: false, message: 'Penyimpanan perangkat gagal. Transaksi belum dicatat.' };
     }
+    setAccounts(updatedAccounts);
+    setJournals(updatedJournals);
+    setTransactions(updatedTxList);
 
     return {
       success: true,
-      message: 'Transaksi berhasil disimpan dan diposting ke buku besar.',
+      message: 'Transaksi tersimpan di perangkat. Status penyimpanan cloud terlihat di bagian atas.',
       tx: newTx,
     };
   };
