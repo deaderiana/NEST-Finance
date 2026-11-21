@@ -119,6 +119,7 @@ interface FinanceContextType {
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'nest_finance_v1_1_state';
+const PENDING_SYNC_KEY = 'nest_finance_pending_sync_v2';
 const REGISTRY_STORAGE_KEY = 'nest_multi_household_registry_v1';
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -149,6 +150,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const autoSyncDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedHashRef = useRef<string>('');
   const isApplyingCloudDataRef = useRef(false);
+  const hasSavedInitialStateRef = useRef(false);
+  const pushQueueRef = useRef<Promise<any>>(Promise.resolve());
+  const latestPullRef = useRef<(force?: boolean) => Promise<any>>();
 
 
   const [welcomeNotice, setWelcomeNotice] = useState<{
@@ -299,7 +303,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (!isLoaded) return;
     try {
-      const nowIso = new Date().toISOString();
+      const previous = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      const initialSave = !hasSavedInitialStateRef.current;
+      hasSavedInitialStateRef.current = true;
+      const applyingCloud = isApplyingCloudDataRef.current;
+      isApplyingCloudDataRef.current = false;
+      const nowIso = (initialSave || applyingCloud) ? previous.updatedAt : new Date().toISOString();
       const stateToSave = {
         users,
         household,
@@ -323,13 +332,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
 
       // Auto-push to Cloud (debounced) if this update came from local user interaction
-      if (!isApplyingCloudDataRef.current) {
+      if (!initialSave && !applyingCloud) {
+        localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(stateToSave));
+        setCloudSyncStatus('syncing');
         if (autoSyncDebounceRef.current) {
           clearTimeout(autoSyncDebounceRef.current);
         }
         autoSyncDebounceRef.current = setTimeout(() => {
           syncToCloud(stateToSave);
-        }, 1200);
+        }, 150);
       }
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
@@ -360,8 +371,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
    */
   const syncToCloud = async (overrideData?: any): Promise<{ success: boolean; message: string }> => {
     if (typeof window === 'undefined') return { success: false, message: 'Server context' };
-    try {
-      setCloudSyncStatus('syncing');
       const payload = overrideData || {
         household,
         users,
@@ -383,6 +392,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastUpdatedBy: currentUser?.display_name || 'User',
       };
 
+      localStorage.setItem(PENDING_SYNC_KEY, JSON.stringify(payload));
+      const send = async (): Promise<{ success: boolean; message: string }> => {
+      try {
+      const latestPending = localStorage.getItem(PENDING_SYNC_KEY);
+      if (latestPending && latestPending !== JSON.stringify(payload)) {
+        return { success: false, message: 'Versi lebih baru sudah masuk antrean sinkronisasi.' };
+      }
+      setCloudSyncStatus('syncing');
       const res = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -391,7 +408,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const json = await res.json();
       if (res.ok && json.success) {
-        setCloudSyncStatus('synced');
+        if (localStorage.getItem(PENDING_SYNC_KEY) === JSON.stringify(payload)) {
+          localStorage.removeItem(PENDING_SYNC_KEY);
+        }
+        setCloudSyncStatus(localStorage.getItem(PENDING_SYNC_KEY) ? 'syncing' : 'synced');
         setLastCloudSyncTime(new Date().toLocaleTimeString('id-ID'));
         return { success: true, message: 'Data berhasil disinkronkan ke cloud!' };
       } else {
@@ -403,6 +423,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setCloudSyncStatus('error');
       return { success: false, message: err?.message || 'Gagal terhubung ke cloud' };
     }
+      };
+    const queued = pushQueueRef.current.then(send, send);
+    pushQueueRef.current = queued;
+    return queued;
   };
 
   /**
@@ -410,12 +434,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
    */
   const syncFromCloud = async (force: boolean = false): Promise<{ success: boolean; message: string }> => {
     if (typeof window === 'undefined') return { success: false, message: 'Server context' };
-    if (isSyncingRef.current && !force) return { success: false, message: 'Sinkronisasi sedang berlangsung' };
+    if (isSyncingRef.current) return { success: false, message: 'Sinkronisasi sedang berlangsung' };
 
     try {
       isSyncingRef.current = true;
       setCloudSyncStatus('syncing');
 
+      const pending = localStorage.getItem(PENDING_SYNC_KEY);
+      if (pending) {
+        const result = await syncToCloud(JSON.parse(pending));
+        if (!result.success) return result;
+      }
+      const beforeRead = localStorage.getItem(STORAGE_KEY);
       const res = await fetch('/api/sync?t=' + Date.now(), {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' },
@@ -436,47 +466,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const cloud = resJson.data;
 
-      // Check timestamp: don't let older cloud data overwrite newer local changes!
-      const cloudUpdatedAt = cloud.updatedAt ? new Date(cloud.updatedAt).getTime() : 0;
-      let localParsed: any = null;
-      let localUpdatedAt = 0;
-      if (typeof window !== 'undefined') {
-        try {
-          const rawLocal = localStorage.getItem(STORAGE_KEY);
-          if (rawLocal) {
-            localParsed = JSON.parse(rawLocal);
-            if (localParsed.updatedAt) {
-              localUpdatedAt = new Date(localParsed.updatedAt).getTime();
-            }
-          }
-        } catch (e) {}
+      // Do not replace edits made while the read was in flight.
+      if (localStorage.getItem(PENDING_SYNC_KEY) || localStorage.getItem(STORAGE_KEY) !== beforeRead) {
+        return { success: false, message: 'Perubahan lokal sedang dikirim; data cloud akan diperiksa kembali.' };
       }
-
-      if (localUpdatedAt > cloudUpdatedAt && !force) {
-        console.log('[CloudSync] Local device has newer changes than cloud. Pushing local to cloud...');
-        isSyncingRef.current = false;
-        return await syncToCloud(localParsed);
+      const local = JSON.parse(beforeRead || '{}');
+      if (local.household?.id && cloud.household?.id !== local.household.id) {
+        setCloudSyncStatus('error');
+        return { success: false, message: 'Pembukuan cloud berbeda dari keluarga pada perangkat ini.' };
       }
+      if (autoSyncDebounceRef.current) clearTimeout(autoSyncDebounceRef.current);
 
-      // Check if local device already has items while cloud is empty
-      const localHasItems =
-        localParsed &&
-        ((localParsed.debts && localParsed.debts.length > 0) ||
-          (localParsed.bills && localParsed.bills.length > 0) ||
-          (localParsed.goals && localParsed.goals.length > 0) ||
-          (localParsed.transactions && localParsed.transactions.length > 0));
-      const cloudHasItems =
-        (cloud.debts && cloud.debts.length > 0) ||
-        (cloud.bills && cloud.bills.length > 0) ||
-        (cloud.goals && cloud.goals.length > 0) ||
-        (cloud.transactions && cloud.transactions.length > 0);
-
-      if (localHasItems && !cloudHasItems && !force) {
-        console.log('[CloudSync] Local device has items while cloud is empty. Pushing local to cloud...');
-        isSyncingRef.current = false;
-        return await syncToCloud(localParsed);
-      }
-
+      // Keep the previous local copy available for recovery of legacy unsent data.
+      if (beforeRead) localStorage.setItem('nest_finance_before_cloud_v2', beforeRead);
       // Apply cloud data to state
       isApplyingCloudDataRef.current = true;
 
@@ -533,7 +535,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           bills: cloud.bills || bills,
           notifications: cloud.notifications || notifications,
           approvalPolicy: cloud.approvalPolicy || approvalPolicy,
-          currentUserId: currentUser?.id || (cloud.users?.[0]?.id),
+          currentUserId: local.currentUserId || currentUser?.id,
+          updatedAt: cloud.updatedAt,
           appPassword: cloud.appPassword || '',
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
@@ -541,9 +544,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.error('[CloudSync] Failed to cache cloud data to localStorage:', e);
       }
 
-      setTimeout(() => {
-        isApplyingCloudDataRef.current = false;
-      }, 800);
+
 
       setCloudSyncStatus('synced');
       setLastCloudSyncTime(new Date().toLocaleTimeString('id-ID'));
@@ -555,35 +556,42 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       isSyncingRef.current = false;
       isApplyingCloudDataRef.current = false;
       return { success: false, message: err?.message || 'Koneksi cloud gagal' };
+    } finally {
+      isSyncingRef.current = false;
     }
   };
+
+  latestPullRef.current = syncFromCloud;
 
   // Background & Reactive Cloud Sync: Pull upon initial load, on focus / visibility change, and periodically
   useEffect(() => {
     if (!isLoaded) return;
 
     // Initial pull
-    syncFromCloud();
+    latestPullRef.current?.();
 
     // Focus / visibility handler for mobile & desktop tab switching
     const handleFocus = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        syncFromCloud();
+        latestPullRef.current?.();
       }
     };
 
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
 
     // Periodic background polling every 25s
     const intervalId = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        syncFromCloud();
+        latestPullRef.current?.();
       }
     }, 25000);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+      if (autoSyncDebounceRef.current) clearTimeout(autoSyncDebounceRef.current);
       document.removeEventListener('visibilitychange', handleFocus);
       clearInterval(intervalId);
     };

@@ -224,10 +224,21 @@ export function ensureStandardIncomeCategories(existingCats: Category[]): Catego
       ? expenseCats
       : INITIAL_CATEGORIES.filter((c) => c.category_type === 'EXPENSE');
 
-  return [...NEW_INCOME_CATEGORIES, ...finalExpenses];
+  const householdId = existingCats[0]?.household_id || SCHOOL_CATEGORY.household_id;
+  const withSchool = finalExpenses.some(c => c.id === SCHOOL_CATEGORY.id || c.name.toLowerCase() === 'keperluan sekolah')
+    ? finalExpenses
+    : [...finalExpenses, { ...SCHOOL_CATEGORY, household_id: householdId }];
+  return [...NEW_INCOME_CATEGORIES.map(c => ({ ...c, household_id: householdId })), ...withSchool];
 }
 
+export const SCHOOL_CATEGORY: Category = {
+  id: 'cat-exp-school', household_id: 'hh-pratama-rahma',
+  name: 'Keperluan Sekolah', category_type: 'EXPENSE',
+  icon: 'GraduationCap', color: '#6366F1', is_system: true, is_active: true,
+};
+
 export const INITIAL_CATEGORIES: Category[] = [
+  SCHOOL_CATEGORY,
   // Income
   ...NEW_INCOME_CATEGORIES,
 

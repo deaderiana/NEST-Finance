@@ -112,8 +112,8 @@ export const Header: React.FC<HeaderProps> = ({
               {cloudSyncStatus === 'syncing'
                 ? 'Sinkron...'
                 : cloudSyncStatus === 'synced'
-                ? 'Cloud Aktif'
-                : 'Sinkron'}
+                ? 'Tersimpan di Cloud'
+                : cloudSyncStatus === 'error' ? 'Belum tersinkron' : 'Sinkron'}
             </span>
           </button>
 
